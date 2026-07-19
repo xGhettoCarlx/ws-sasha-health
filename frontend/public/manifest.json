@@ -1,14 +1,13 @@
 {
-  "name": "Медицинский дневник",
+  "name": "Sasha Health",
   "short_name": "Sasha Health",
   "description": "Персональный медицинский дневник",
   "start_url": "/sh/",
   "scope": "/sh/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "theme_color": "#1a1a2e",
   "background_color": "#ffffff",
-  "categories": ["health", "medical", "lifestyle"],
   "lang": "ru",
   "icons": [
     {
@@ -22,5 +21,6 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "make_pwa_version": "1.0.0"
 }

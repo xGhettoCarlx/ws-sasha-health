@@ -231,9 +231,10 @@ jobs:
       - name: Validate required secrets
         shell: bash
         env:
-          DO_HOST: ${{ secrets.DO_HOST }}
-          DO_SSH_USER: ${{ secrets.DO_SSH_USER }}
-          DO_SSH_KEY: ${{ secrets.DO_SSH_KEY }}
+          # Prefer DO_*; fall back to legacy SSH_* names from old frontend deploy
+          DO_HOST: ${{ secrets.DO_HOST || secrets.SSH_HOST }}
+          DO_SSH_USER: ${{ secrets.DO_SSH_USER || secrets.SSH_USER }}
+          DO_SSH_KEY: ${{ secrets.DO_SSH_KEY || secrets.SSH_PRIVATE_KEY }}
           DO_SPA_REMOTE_PATH: ${{ secrets.DO_SPA_REMOTE_PATH }}
         run: |
           set -euo pipefail
@@ -246,6 +247,7 @@ jobs:
           done
           if [ "${missing}" -ne 0 ]; then
             echo "See docs/GITHUB_ACTIONS_SECRETS_CHECKLIST.md"
+            echo "Legacy names also accepted: SSH_HOST, SSH_USER, SSH_PRIVATE_KEY"
             exit 1
           fi
           echo "Required secrets present (values not printed)."
@@ -253,7 +255,7 @@ jobs:
       - name: Install SSH key
         shell: bash
         env:
-          DO_SSH_KEY: ${{ secrets.DO_SSH_KEY }}
+          DO_SSH_KEY: ${{ secrets.DO_SSH_KEY || secrets.SSH_PRIVATE_KEY }}
           DO_SSH_KNOWN_HOSTS: ${{ secrets.DO_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
@@ -272,8 +274,8 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_frontend_deploy != true }}
         shell: bash
         env:
-          DO_HOST: ${{ secrets.DO_HOST }}
-          DO_SSH_USER: ${{ secrets.DO_SSH_USER }}
+          DO_HOST: ${{ secrets.DO_HOST || secrets.SSH_HOST }}
+          DO_SSH_USER: ${{ secrets.DO_SSH_USER || secrets.SSH_USER }}
           DO_SSH_PORT: ${{ secrets.DO_SSH_PORT }}
           DO_SPA_REMOTE_PATH: ${{ secrets.DO_SPA_REMOTE_PATH }}
         run: |
@@ -291,8 +293,8 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_backend_deploy != true }}
         shell: bash
         env:
-          DO_HOST: ${{ secrets.DO_HOST }}
-          DO_SSH_USER: ${{ secrets.DO_SSH_USER }}
+          DO_HOST: ${{ secrets.DO_HOST || secrets.SSH_HOST }}
+          DO_SSH_USER: ${{ secrets.DO_SSH_USER || secrets.SSH_USER }}
           DO_SSH_PORT: ${{ secrets.DO_SSH_PORT }}
           DO_API_REMOTE_PATH: ${{ secrets.DO_API_REMOTE_PATH }}
         run: |
@@ -318,8 +320,8 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_post_deploy != false }}
         shell: bash
         env:
-          DO_HOST: ${{ secrets.DO_HOST }}
-          DO_SSH_USER: ${{ secrets.DO_SSH_USER }}
+          DO_HOST: ${{ secrets.DO_HOST || secrets.SSH_HOST }}
+          DO_SSH_USER: ${{ secrets.DO_SSH_USER || secrets.SSH_USER }}
           DO_SSH_PORT: ${{ secrets.DO_SSH_PORT }}
           DO_POST_DEPLOY_CMD: ${{ secrets.DO_POST_DEPLOY_CMD }}
         run: |

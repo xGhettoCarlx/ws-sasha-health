@@ -22,7 +22,8 @@ if [[ -f "$APP_ROOT/.env" ]]; then
   set +a
 fi
 
-HOST="${HOST:-127.0.0.1}"
+# 0.0.0.0 so Tailscale / DO nginx can reach Mac backend (not only localhost)
+HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
 
 export PATH="$APP_ROOT/.venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"

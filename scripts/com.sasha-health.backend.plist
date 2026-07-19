@@ -51,6 +51,11 @@
     <string>/Users/sashak/Station</string>
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
+    <!-- Tailscale/DO proxy: bind all interfaces (override via .env HOST if needed) -->
+    <key>HOST</key>
+    <string>0.0.0.0</string>
+    <key>PORT</key>
+    <string>8000</string>
   </dict>
 </dict>
 </plist>

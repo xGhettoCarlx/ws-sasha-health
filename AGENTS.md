@@ -48,10 +48,11 @@ Telegram WebApp / PWA
         ▼
 FastAPI  (app/main.py)
   routes: auth, admin, profile, pharmacy, history, schedule,
-          insurance, fluorography, inbox, media
+          insurance, fluorography, inbox, media, pipeline, belgosstrakh
   bot.py   → outbound TG messages + Mini App button
   ocr.py   → Grok Vision → AnalysisSchema
   cron/    → medication & visit checks
+  tools/belgosstrakh_submit.py → DMS application to my.bgs.by (agent tool)
         │
         ▼
 MDStorage  (atomic write + fcntl flock)

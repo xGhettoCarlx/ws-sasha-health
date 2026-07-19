@@ -76,6 +76,18 @@ class Settings(BaseSettings):
         "Required for check_medications and check_visits cron scripts.",
     )
 
+    # ── Belgosstrakh DMS submit (optional; used by tools/belgosstrakh_submit) ──
+    BGS_LOGIN: str | None = Field(default=None, description="Belgosstrakh cabinet login")
+    BGS_PASSWORD: str | None = Field(default=None, description="Belgosstrakh cabinet password")
+    BGS_POLICY_SERIES: str | None = Field(default=None, description="DMS policy series (BSO)")
+    BGS_POLICY_NUMBER: str | None = Field(default=None, description="DMS policy number")
+    BGS_PHONE: str | None = Field(default=None)
+    BGS_EMAIL: str | None = Field(default=None)
+    BGS_BIRTHDAY: str | None = Field(default=None, description="DD.MM.YYYY")
+    BGS_FULL_NAME: str | None = Field(default=None)
+    BGS_CITY: str = Field(default="Могилёв")
+    BGS_ENGINE: str = Field(default="http", description="http | playwright")
+
     @property
     def mini_app_url_with_cache_bust(self) -> str:
         """Return MINI_APP_URL with ?v=YYYYMMDD cache-busting parameter."""

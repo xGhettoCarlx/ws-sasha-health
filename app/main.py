@@ -11,6 +11,7 @@ from app.auth import require_auth
 from app.config import get_settings
 from app.routes.admin import router as admin_router
 from app.routes.auth import router as auth_router
+from app.routes.belgosstrakh import router as belgosstrakh_router
 from app.routes.fluorography import router as fluorography_router
 from app.routes.history import router as history_router
 from app.routes.inbox import router as inbox_router
@@ -37,6 +38,7 @@ app.add_middleware(
 
 app.include_router(admin_router)
 app.include_router(auth_router)
+app.include_router(belgosstrakh_router)
 app.include_router(fluorography_router)
 app.include_router(history_router)
 app.include_router(inbox_router)

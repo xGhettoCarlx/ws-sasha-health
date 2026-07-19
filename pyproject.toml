@@ -27,6 +27,9 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.6",
 ]
+bgs = [
+    "playwright>=1.40",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*", "tests*"]

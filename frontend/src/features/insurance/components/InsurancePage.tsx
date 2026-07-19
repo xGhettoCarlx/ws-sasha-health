@@ -1,5 +1,5 @@
 /**
- * DMS Insurance workspace — policy limits + covered/excluded + Trojan Horse.
+ * DMS Insurance workspace — policy + coverage tiles/accordions + Trojan Horse.
  * Data: /api/insurance/ ← data/страховка.md
  */
 import { useMemo, useState } from "react";
@@ -24,9 +24,10 @@ import { TrojanHorsePanel } from "../../trojan/components/TrojanHorsePanel";
 import { cn } from "../../../lib/utils";
 
 /** Belgosstrakh АВгос+ком — structured from страховка.md body */
-const COVERED_GROUPS: { title: string; items: string[] }[] = [
+const COVERED_GROUPS: { title: string; items: string[]; glyph: string }[] = [
   {
     title: "Консультации",
+    glyph: "🩺",
     items: [
       "Все специалисты (кроме диетолога, сомнолога, трихолога, косметолога, психиатра, нарколога, мануального терапевта, стоматолога-ортопеда/ортодонта/имплантолога)",
       "Высоковостребованные (>70 BYN) — франшиза 40%",
@@ -35,6 +36,7 @@ const COVERED_GROUPS: { title: string; items: string[] }[] = [
   },
   {
     title: "Диагностика",
+    glyph: "🔬",
     items: [
       "Лаборатории: Хеликс, Инвитро, Синлаб-ЕМЛ, гос.",
       "УЗИ — без ограничений",
@@ -45,6 +47,7 @@ const COVERED_GROUPS: { title: string; items: string[] }[] = [
   },
   {
     title: "Лечение",
+    glyph: "💊",
     items: [
       "Малые операции (в гос.)",
       "Уколы / блокады — до 10",
@@ -54,12 +57,27 @@ const COVERED_GROUPS: { title: string; items: string[] }[] = [
   },
 ];
 
-const NOT_COVERED: string[] = [
-  "Лекарства, БАДы, витамины",
-  "Плановая стоматология, протезирование, имплантация",
-  "Онкология, ВИЧ, гепатиты B/C, туберкулёз, диабет 1 типа, психиатрия",
-  "Беременность, роды",
-  "Капельницы, мануальная терапия, остеопатия",
+const NOT_COVERED: { title: string; detail: string }[] = [
+  {
+    title: "Лекарства",
+    detail: "Лекарства, БАДы, витамины — вне полиса",
+  },
+  {
+    title: "Стоматология",
+    detail: "Плановая, протезирование, имплантация — нет",
+  },
+  {
+    title: "Хронические / тяжёлые",
+    detail: "Онкология, ВИЧ, гепатиты B/C, туберкулёз, диабет 1 типа, психиатрия",
+  },
+  {
+    title: "Беременность",
+    detail: "Беременность и роды не покрываются",
+  },
+  {
+    title: "Процедуры",
+    detail: "Капельницы, мануальная терапия, остеопатия",
+  },
 ];
 
 function money(n: number | undefined | null): string {
@@ -83,10 +101,13 @@ export default function InsurancePage() {
     staleTime: 60_000,
   });
 
-  /** Compact: coverage lists collapsed by default; Trojan open near top */
   const [openCovered, setOpenCovered] = useState(false);
   const [openExcluded, setOpenExcluded] = useState(false);
   const [openTrojan, setOpenTrojan] = useState(true);
+  /** Accordion: which covered group tile is expanded */
+  const [openCoveredGroup, setOpenCoveredGroup] = useState<string | null>(null);
+  /** Accordion: which excluded tile is expanded */
+  const [openExcludedItem, setOpenExcludedItem] = useState<string | null>(null);
 
   const policy = policyFromSchema(data);
   const sum = policy?.sum_insured ?? 0;
@@ -151,7 +172,7 @@ export default function InsurancePage() {
     <div className="page-shell section-gap">
       <PageHeader subtitle="Белгосстрах · ДМС" title="Страховка" />
       <p className="text-[13px] text-[#8E8E93] -mt-2 leading-relaxed">
-        Полис, покрытие и Троянский конь для аппрува чекапов
+        Полис, покрытие плиткой и Троянский конь — база для PDF-промпта
       </p>
 
       {/* Hero policy card */}
@@ -234,15 +255,12 @@ export default function InsurancePage() {
                   <span className="text-[#1C1C1E]">{money(meta.premium)} BYN</span>
                 </p>
               )}
-              {meta.source && (
-                <p className="text-[11px] text-[#AEAEB2] leading-snug">{meta.source}</p>
-              )}
             </div>
           )}
         </div>
       </GlassCard>
 
-      {/* Trojan Horse — top, right under policy limits */}
+      {/* Trojan Horse */}
       <section>
         <button
           type="button"
@@ -258,12 +276,12 @@ export default function InsurancePage() {
           />
         </button>
         <p className="text-[12px] text-[#8E8E93] mb-2 px-0.5">
-          Выбери направление — реальные жалобы + формулировки для аппрува чекапа
+          База формулировок для PDF-промпта врачу (без отдельных кнопок Сохранить/Скрипт)
         </p>
         {openTrojan && <TrojanHorsePanel />}
       </section>
 
-      {/* Covered — collapsed by default */}
+      {/* Covered — tile grid + accordion detail */}
       <section>
         <button
           type="button"
@@ -279,31 +297,62 @@ export default function InsurancePage() {
           />
         </button>
         {openCovered && (
-          <div className="space-y-2">
-            {COVERED_GROUPS.map((g) => (
-              <GlassCard key={g.title} padding="md">
-                <p className="text-[14px] font-semibold mb-2 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-[#34C759]" />
-                  {g.title}
-                </p>
-                <ul className="space-y-1.5">
-                  {g.items.map((item) => (
-                    <li
-                      key={item}
-                      className="text-[13px] text-[#1C1C1E]/90 leading-snug pl-1 flex gap-2"
-                    >
-                      <span className="text-[#34C759] shrink-0">•</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </GlassCard>
-            ))}
+          <div className="grid grid-cols-1 gap-2">
+            {COVERED_GROUPS.map((g) => {
+              const open = openCoveredGroup === g.title;
+              return (
+                <div key={g.title}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenCoveredGroup((cur) =>
+                        cur === g.title ? null : g.title,
+                      )
+                    }
+                    className={cn(
+                      "w-full text-left rounded-2xl px-3.5 py-3 pressable border flex items-center gap-3",
+                      open
+                        ? "bg-[#34C759]/12 border-[#34C759]/35"
+                        : "bg-white border-transparent shadow-[var(--shadow-card)]",
+                    )}
+                  >
+                    <span className="text-[22px] leading-none">{g.glyph}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[15px] font-semibold flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-[#34C759]" />
+                        {g.title}
+                      </p>
+                      <p className="text-[12px] text-[#8E8E93] mt-0.5">
+                        {g.items.length} пункта · нажми для деталей
+                      </p>
+                    </div>
+                    <ChevronDown
+                      className={cn(
+                        "w-4 h-4 text-[#C7C7CC] shrink-0 transition-transform",
+                        open && "rotate-180",
+                      )}
+                    />
+                  </button>
+                  {open && (
+                    <div className="mt-1.5 ml-2 pl-3 border-l-2 border-[#34C759]/30 space-y-1.5 py-1">
+                      {g.items.map((item) => (
+                        <p
+                          key={item}
+                          className="text-[13px] text-[#1C1C1E]/90 leading-snug"
+                        >
+                          {item}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
 
-      {/* Not covered — collapsed by default */}
+      {/* Not covered — rectangular tiles + accordion */}
       <section>
         <button
           type="button"
@@ -319,29 +368,50 @@ export default function InsurancePage() {
           />
         </button>
         {openExcluded && (
-          <GlassCard padding="md">
-            <ul className="space-y-2">
-              {NOT_COVERED.map((item) => (
-                <li
-                  key={item}
-                  className="text-[13px] leading-snug flex gap-2 items-start"
+          <div className="grid grid-cols-2 gap-2">
+            {NOT_COVERED.map((item) => {
+              const open = openExcludedItem === item.title;
+              return (
+                <button
+                  key={item.title}
+                  type="button"
+                  onClick={() =>
+                    setOpenExcludedItem((cur) =>
+                      cur === item.title ? null : item.title,
+                    )
+                  }
+                  className={cn(
+                    "text-left rounded-2xl px-3 py-3 pressable border min-h-[72px]",
+                    open
+                      ? "bg-[#FF3B30]/10 border-[#FF3B30]/30 col-span-2"
+                      : "bg-white border-transparent shadow-[var(--shadow-card)]",
+                  )}
                 >
-                  <XCircle className="w-4 h-4 text-[#FF3B30] shrink-0 mt-0.5" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </GlassCard>
+                  <p className="text-[13px] font-semibold flex items-center gap-1.5">
+                    <XCircle className="w-3.5 h-3.5 text-[#FF3B30] shrink-0" />
+                    {item.title}
+                  </p>
+                  {open && (
+                    <p className="text-[12px] text-[#8E8E93] mt-1.5 leading-snug">
+                      {item.detail}
+                    </p>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         )}
       </section>
 
       {/* Contacts */}
       <section>
         <SectionHeader title="Контакты БГС" />
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 gap-2">
           <a href="tel:+375222713071" className="block">
             <GlassCard padding="md" pressable className="flex items-center gap-3">
-              <Phone className="w-5 h-5 text-[#007AFF]" />
+              <div className="w-10 h-10 rounded-2xl bg-[#007AFF]/12 flex items-center justify-center">
+                <Phone className="w-5 h-5 text-[#007AFF]" />
+              </div>
               <div>
                 <p className="text-[15px] font-medium">+375 222 71 30 71</p>
                 <p className="text-[12px] text-[#8E8E93]">Телефон</p>
@@ -350,7 +420,9 @@ export default function InsurancePage() {
           </a>
           <a href="mailto:dms.mogilev@bgs.by" className="block">
             <GlassCard padding="md" pressable className="flex items-center gap-3">
-              <Mail className="w-5 h-5 text-[#007AFF]" />
+              <div className="w-10 h-10 rounded-2xl bg-[#007AFF]/12 flex items-center justify-center">
+                <Mail className="w-5 h-5 text-[#007AFF]" />
+              </div>
               <div>
                 <p className="text-[15px] font-medium">dms.mogilev@bgs.by</p>
                 <p className="text-[12px] text-[#8E8E93]">Email · Могилёв</p>

@@ -39,7 +39,8 @@ def _env(monkeypatch, test_data_dir):
 
 @pytest.fixture
 def store(test_data_dir):
-    return MDStorage(base_dir=test_data_dir)
+    # Multi-tenant: API MDStorage() resolves to data/users/<auth_user_id>/
+    return MDStorage.for_user(TEST_USER["id"])
 
 
 def _seed(store: MDStorage):

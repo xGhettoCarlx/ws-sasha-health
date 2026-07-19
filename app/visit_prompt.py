@@ -302,6 +302,100 @@ def write_prompt_file(
     return path
 
 
+def _html_escape(s: str) -> str:
+    return (
+        s.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def write_print_html(
+    markdown: str,
+    *,
+    visit_id: str,
+    store: Optional[MDStorage] = None,
+    md_path: Optional[Path] = None,
+) -> Path:
+    """Write a print-ready HTML sheet next to the markdown prompt (PDF-for-print).
+
+    Opens cleanly in browser / Telegram WebView; user can Share → Print → PDF.
+    """
+    store = store or _store()
+    if md_path is not None:
+        path = md_path.with_suffix(".html")
+    else:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        safe = re.sub(r"[^\w\-]+", "_", visit_id)[:48] or "visit"
+        abs_dir = store.base_dir / "export" / "prompts"
+        abs_dir.mkdir(parents=True, exist_ok=True)
+        path = abs_dir / f"previsit_{safe}_{stamp}.html"
+
+    body = _html_escape(markdown)
+    html = f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Лист для печати · { _html_escape(visit_id) }</title>
+  <style>
+    @page {{ margin: 14mm; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 12pt; line-height: 1.45; color: #111; max-width: 720px; margin: 0 auto; padding: 16px;
+    }}
+    h1 {{ font-size: 18pt; margin: 0 0 8px; }}
+    .meta {{ color: #555; font-size: 10pt; margin-bottom: 16px; }}
+    pre {{
+      white-space: pre-wrap; word-wrap: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10.5pt; background: #f6f6f8; padding: 12px; border-radius: 8px;
+    }}
+    @media print {{
+      body {{ padding: 0; }}
+      pre {{ background: none; padding: 0; }}
+      .noprint {{ display: none !important; }}
+    }}
+  </style>
+</head>
+<body>
+  <p class="noprint meta">sasha-health · распечатать / сохранить как PDF</p>
+  <h1>Pre-Visit промпт</h1>
+  <p class="meta">visit_id: { _html_escape(visit_id) }</p>
+  <pre>{body}</pre>
+  <script class="noprint">
+    // Optional: auto-open print dialog when ?print=1
+    if (location.search.includes("print=1")) window.addEventListener("load", () => window.print());
+  </script>
+</body>
+</html>
+"""
+    path.write_text(html, encoding="utf-8")
+    return path
+
+
+def latest_prompt_files(store: MDStorage, visit_id: str) -> dict[str, Optional[Path]]:
+    """Find newest md/html prompt pair for visit_id under export/prompts/."""
+    safe = re.sub(r"[^\w\-]+", "_", visit_id)[:48] or "visit"
+    abs_dir = store.base_dir / "export" / "prompts"
+    if not abs_dir.is_dir():
+        return {"md": None, "html": None}
+    mds = sorted(abs_dir.glob(f"previsit_{safe}_*.md"), reverse=True)
+    htmls = sorted(abs_dir.glob(f"previsit_{safe}_*.html"), reverse=True)
+    return {
+        "md": mds[0] if mds else None,
+        "html": htmls[0] if htmls else None,
+    }
+
+
+def generate_bgs_application_number(visit_id: str) -> str:
+    """Local placeholder BGS application id until real my.bgs.by response is stored."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    short = re.sub(r"[^\w]+", "", visit_id)[-6:].upper() or "VISIT"
+    return f"BGS-{stamp}-{short}"
+
+
 def resolve_operator_chat_id(user: dict | None = None) -> Optional[int]:
     """Prefer TELEGRAM_CHAT_ID, then authenticated Telegram user id."""
     from app.config import get_settings

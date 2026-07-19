@@ -5,7 +5,7 @@
  * the backend Pydantic schemas.
  */
 
-import { apiDelete, apiFetch, apiPost, apiPut } from "./api";
+import { apiDelete, apiFetch, apiFetchBlob, apiPost, apiPut } from "./api";
 import type {
   AnalyticsResponse,
   ApproveRequest,
@@ -98,10 +98,16 @@ export function fetchTimeline(): Promise<TimelineResponse> {
 export function setInsuranceWarned(
   visitId: string,
   insurance_warned: boolean,
+  bgs_application_number?: string,
 ): Promise<VisitItem> {
   return apiFetch<VisitItem>(`/api/schedule/${visitId}/insurance-warned`, {
     method: "PATCH",
-    body: JSON.stringify({ insurance_warned }),
+    body: JSON.stringify({
+      insurance_warned,
+      ...(bgs_application_number
+        ? { bgs_application_number }
+        : {}),
+    }),
   });
 }
 
@@ -126,7 +132,7 @@ export function composeTrojan(data: {
   return apiPost<TrojanComposeResponse>("/api/trojan/compose", data);
 }
 
-/** Timeline «Нужен промпт» → markdown file + Telegram document */
+/** Pipeline «Нужен промпт» → markdown + print HTML + Telegram document */
 export function requestVisitPrompt(
   visitId: string,
   opts?: { dry_run?: boolean; chat_id?: number },
@@ -134,6 +140,9 @@ export function requestVisitPrompt(
   ok: boolean;
   visit_id: string;
   path: string;
+  pdf_path?: string;
+  pdf_ready?: boolean;
+  download_url?: string;
   telegram_sent: boolean;
   telegram_error?: string | null;
   hint?: string;
@@ -143,6 +152,21 @@ export function requestVisitPrompt(
     dry_run: opts?.dry_run ?? false,
     chat_id: opts?.chat_id,
   });
+}
+
+/** Download print-ready prompt package (HTML → Print / Save as PDF). */
+export async function downloadVisitPrompt(visitId: string): Promise<void> {
+  const blob = await apiFetchBlob(
+    `/api/visits/${encodeURIComponent(visitId)}/prompt/download`,
+  );
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `previsit-${visitId}-print.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function fetchCategories(): Promise<CategoriesResponse> {

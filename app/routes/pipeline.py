@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -482,15 +483,19 @@ async def get_timeline(_user: dict = require_auth):
 
 class InsuranceWarnedBody(BaseModel):
     insurance_warned: bool = True
+    bgs_application_number: Optional[str] = None
 
 
 @router.patch("/api/schedule/{visit_id}/insurance-warned")
 async def patch_insurance_warned(
     visit_id: str,
     body: InsuranceWarnedBody,
-    _user: dict = require_auth,
+    user: dict = require_auth,
 ):
-    """Set insurance_warned on a future visit."""
+    """Mark insurance (БГС) as warned; store / auto-assign BGS application number."""
+    from app.bot import bot_token_usable, send_reminder
+    from app.visit_prompt import generate_bgs_application_number, resolve_operator_chat_id
+
     store = _store()
     path = f"{SCHEDULE_DIR}/{visit_id}.md"
     try:
@@ -498,6 +503,29 @@ async def patch_insurance_warned(
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Visit not found") from None
     meta["insurance_warned"] = bool(body.insurance_warned)
+    if body.insurance_warned:
+        num = (body.bgs_application_number or meta.get("bgs_application_number") or "").strip()
+        if not num:
+            num = generate_bgs_application_number(visit_id)
+        meta["bgs_application_number"] = num
+        # Notify operator bot (outbound only)
+        chat_id = resolve_operator_chat_id(user)
+        if bot_token_usable() and chat_id:
+            who = meta.get("doctor") or meta.get("specialty") or visit_id
+            try:
+                await send_reminder(
+                    int(chat_id),
+                    (
+                        f"🛡 <b>Страховая предупреждена</b>\n"
+                        f"{who}\n"
+                        f"Заявка БГС: <code>{num}</code>"
+                    ),
+                )
+            except Exception:
+                pass
+    else:
+        # keep number for history but allow re-warn
+        pass
     store.write(path, meta, content)
     return _normalize_visit(meta)
 
@@ -636,16 +664,18 @@ async def trigger_visit_prompt(
     body: VisitPromptBody | None = None,
     user: dict = require_auth,
 ):
-    """Build Gemini pre-visit markdown for a future visit and push to Telegram.
+    """Build pre-visit prompt package and signal the Telegram bot.
 
-    Timeline button «Нужен промпт» → this endpoint.
-    Always writes a .md under data/export/prompts/; Telegram send if BOT_TOKEN real.
+    «Нужен промпт» / «Страховая» flow:
+      open visit (draft | booked) → markdown + print HTML → Telegram document.
+    Marks visit.prompt_ready for Mini App download button.
     """
     from app.bot import bot_token_usable, send_document
     from app.visit_prompt import (
         build_visit_prompt_markdown,
         load_visit,
         resolve_operator_chat_id,
+        write_print_html,
         write_prompt_file,
     )
 
@@ -656,32 +686,33 @@ async def trigger_visit_prompt(
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"visit not found: {visit_id}") from None
 
-    # Prompt for booked future visits (date >= today). Drafts need booking first.
-    today = date.today()
     status = resolve_visit_status(visit)
-    eff = _effective_date(visit)
-    is_future = False
-    if status == "completed" or status == "cancelled":
-        is_future = False
-    elif status == "booked" and eff and eff >= today:
-        is_future = True
-    elif status == "booked" and not eff:
-        is_future = True  # rare: booked without parseable date
-    # draft → no prompt until operator books a date
-    if not is_future:
+    if status in ("completed", "cancelled"):
         raise HTTPException(
             status_code=400,
-            detail=(
-                "prompt only for booked future visits "
-                "(draft = need to book first)"
-                if status == "draft"
-                else "prompt only for booked future visits"
-            ),
+            detail="prompt only for open visits (draft / booked)",
         )
 
     md = build_visit_prompt_markdown(visit, store=store)
     path = write_prompt_file(md, visit_id=visit_id, store=store)
+    html_path = write_print_html(md, visit_id=visit_id, store=store, md_path=path)
     chat_id = body.chat_id or resolve_operator_chat_id(user)
+
+    # Persist readiness on the visit card for Mini App download button
+    vpath = f"{SCHEDULE_DIR}/{visit_id}.md"
+    try:
+        meta, content = store.read(vpath)
+        meta["prompt_ready"] = True
+        meta["prompt_path"] = str(path.relative_to(store.base_dir)) if path.is_relative_to(store.base_dir) else str(path)
+        meta["prompt_pdf_path"] = (
+            str(html_path.relative_to(store.base_dir))
+            if html_path.is_relative_to(store.base_dir)
+            else str(html_path)
+        )
+        meta["prompt_generated_at"] = datetime.now().isoformat(timespec="seconds")
+        store.write(vpath, meta, content)
+    except Exception:
+        pass
 
     telegram_sent = False
     telegram_error: Optional[str] = None
@@ -693,10 +724,11 @@ async def trigger_visit_prompt(
         telegram_error = "no chat_id (set TELEGRAM_CHAT_ID)"
     else:
         try:
+            status_label = "нужно записаться" if status == "draft" else "записан"
             caption = (
-                f"🧾 <b>Промпт к визиту</b>\n"
+                f"🧾 <b>Промпт к визиту</b> ({status_label})\n"
                 f"{visit.get('doctor') or visit.get('specialty') or visit_id}\n"
-                f"{visit.get('visit_date') or visit.get('date') or ''} "
+                f"{visit.get('visit_date') or visit.get('date') or 'дата не назначена'} "
                 f"{visit.get('time') or ''}"
             ).strip()
             telegram_sent = await send_document(
@@ -716,17 +748,68 @@ async def trigger_visit_prompt(
         "specialty": visit.get("specialty"),
         "doctor": visit.get("doctor"),
         "path": str(path),
+        "pdf_path": str(html_path),
+        "pdf_ready": True,
+        "download_url": f"/api/visits/{visit_id}/prompt/download",
         "bytes": path.stat().st_size,
         "chat_id": chat_id,
         "telegram_sent": telegram_sent,
         "telegram_error": telegram_error,
         "bot_token_usable": bot_token_usable(),
         "hint": (
-            "Markdown-файл в Telegram"
+            "Промпт отправлен в Telegram · можно скачать PDF для печати"
             if telegram_sent
-            else f"Файл сохранён локально: {path}. {telegram_error or ''}"
+            else f"Промпт сохранён · скачайте PDF для печати. {telegram_error or ''}"
         ),
     }
+
+
+@router.get("/api/visits/{visit_id}/prompt/download")
+async def download_visit_prompt(
+    visit_id: str,
+    _user: dict = require_auth,
+):
+    """Download print-ready prompt package (HTML → Print → PDF)."""
+    from starlette.responses import FileResponse
+
+    from app.visit_prompt import latest_prompt_files, load_visit
+
+    store = _store()
+    try:
+        visit = load_visit(store, visit_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"visit not found: {visit_id}") from None
+
+    files = latest_prompt_files(store, visit_id)
+    # Prefer explicit paths on visit meta
+    preferred: list[Path] = []
+    for key in ("prompt_pdf_path", "prompt_path"):
+        rel = visit.get(key)
+        if rel:
+            p = Path(str(rel))
+            if not p.is_absolute():
+                p = store.base_dir / p
+            if p.is_file():
+                preferred.append(p)
+    if files.get("html"):
+        preferred.append(files["html"])  # type: ignore[arg-type]
+    if files.get("md"):
+        preferred.append(files["md"])  # type: ignore[arg-type]
+
+    if not preferred:
+        raise HTTPException(status_code=404, detail="prompt not ready — press «Нужен промпт» first")
+
+    path = preferred[0]
+    media = "text/html; charset=utf-8" if path.suffix.lower() == ".html" else "text/markdown; charset=utf-8"
+    # Filename suggests print-to-PDF workflow
+    download_name = path.name if path.suffix.lower() == ".html" else path.with_suffix(".html").name
+    if path.suffix.lower() == ".html":
+        download_name = path.name.replace(".html", "-print.html")
+    return FileResponse(
+        path,
+        media_type=media,
+        filename=download_name,
+    )
 
 
 @router.post("/api/trojan/compose")

@@ -153,6 +153,12 @@ export interface VisitItem {
   specialty?: string | null;
   visit_date?: string | null;
   insurance_warned?: boolean;
+  /** Belgosstrakh application number when insurance_warned */
+  bgs_application_number?: string | null;
+  prompt_ready?: boolean;
+  prompt_path?: string | null;
+  prompt_pdf_path?: string | null;
+  prompt_generated_at?: string | null;
   pipeline_cycle?: string | null;
   effective_date?: string | null;
   kind?: string;

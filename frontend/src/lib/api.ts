@@ -169,3 +169,36 @@ export async function apiDelete<T = unknown>(
     method: "DELETE",
   });
 }
+
+/** Authenticated binary/blob download (prompt PDF/HTML package). */
+export async function apiFetchBlob(path: string): Promise<Blob> {
+  const url = `${BASE_URL}${path}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        ...authHeaders(),
+      },
+    });
+  } catch (err) {
+    const msg =
+      err instanceof TypeError
+        ? `Нет связи с API (${url || path})`
+        : String(err);
+    throw new ApiError(0, msg, null);
+  }
+  if (!res.ok) {
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      /* ignore */
+    }
+    const message =
+      typeof body === "object" && body !== null && "detail" in body
+        ? String((body as { detail: unknown }).detail)
+        : `API ${res.status}`;
+    throw new ApiError(res.status, message, body);
+  }
+  return res.blob();
+}

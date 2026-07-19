@@ -126,6 +126,25 @@ export function composeTrojan(data: {
   return apiPost<TrojanComposeResponse>("/api/trojan/compose", data);
 }
 
+/** Timeline «Нужен промпт» → markdown file + Telegram document */
+export function requestVisitPrompt(
+  visitId: string,
+  opts?: { dry_run?: boolean; chat_id?: number },
+): Promise<{
+  ok: boolean;
+  visit_id: string;
+  path: string;
+  telegram_sent: boolean;
+  telegram_error?: string | null;
+  hint?: string;
+  bytes?: number;
+}> {
+  return apiPost(`/api/visits/${encodeURIComponent(visitId)}/prompt`, {
+    dry_run: opts?.dry_run ?? false,
+    chat_id: opts?.chat_id,
+  });
+}
+
 export function fetchCategories(): Promise<CategoriesResponse> {
   return apiFetch<CategoriesResponse>("/api/history/categories");
 }

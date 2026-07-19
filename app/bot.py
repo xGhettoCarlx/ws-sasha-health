@@ -5,11 +5,14 @@ All functions are async and use HTML parse mode.
 """
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import (
+    BufferedInputFile,
+    FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     WebAppInfo,
@@ -19,9 +22,32 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Placeholder tokens used in local/dev .env — cannot call real Telegram API
+_PLACEHOLDER_TOKENS = frozenset({
+    "",
+    "dev-local-placeholder",
+    "ci-dummy-token-not-for-production",
+    "change-me",
+    "your-bot-token",
+    "YOUR_BOT_TOKEN",
+    "your_telegram_bot_token_here",
+})
+
 # --- Lazy singleton ---
 
 _bot: Bot | None = None
+
+
+def bot_token_usable() -> bool:
+    """True when BOT_TOKEN looks like a real Telegram bot token."""
+    try:
+        token = (get_settings().BOT_TOKEN or "").strip()
+    except Exception:
+        return False
+    if not token or token in _PLACEHOLDER_TOKENS:
+        return False
+    # Typical: 123456:ABC-DEF... (tests use short 12345:TEST_AUTH_TOKEN)
+    return ":" in token and len(token) > 15
 
 
 def get_bot() -> Bot:
@@ -29,6 +55,8 @@ def get_bot() -> Bot:
     global _bot
     if _bot is None:
         settings = get_settings()
+        if not bot_token_usable():
+            raise RuntimeError("BOT_TOKEN is missing or a local placeholder")
         _bot = Bot(token=settings.BOT_TOKEN)
         logger.info("Bot singleton initialized")
     return _bot
@@ -166,6 +194,73 @@ async def send_visit_reminder(chat_id: int, visit_info: dict[str, str]) -> bool:
         lines.append(f"Notes: {notes}")
 
     return await _safe_send(chat_id, "\n".join(lines))
+
+
+async def send_document(
+    chat_id: int,
+    path: str | Path,
+    *,
+    caption: str | None = None,
+    filename: str | None = None,
+) -> bool:
+    """Send a local file as a Telegram document to *chat_id*.
+
+    Returns True on success, False on API error or unusable bot token.
+    """
+    if not bot_token_usable():
+        logger.warning("send_document skipped — BOT_TOKEN not usable")
+        return False
+    p = Path(path)
+    if not p.is_file():
+        logger.error("send_document: file missing %s", p)
+        return False
+    bot = get_bot()
+    name = filename or p.name
+    try:
+        doc = FSInputFile(str(p), filename=name)
+        await bot.send_document(
+            chat_id=chat_id,
+            document=doc,
+            caption=(caption or "")[:1024] or None,
+            parse_mode="HTML" if caption else None,
+        )
+        logger.info("Document %s sent to chat_id=%d", name, chat_id)
+        return True
+    except TelegramAPIError as exc:
+        logger.error("Telegram API error send_document chat_id=%d: %s", chat_id, exc)
+        return False
+    except Exception as exc:
+        logger.error("send_document failed: %s", exc)
+        return False
+
+
+async def send_document_bytes(
+    chat_id: int,
+    data: bytes,
+    filename: str,
+    *,
+    caption: str | None = None,
+) -> bool:
+    """Send in-memory bytes as a Telegram document."""
+    if not bot_token_usable():
+        logger.warning("send_document_bytes skipped — BOT_TOKEN not usable")
+        return False
+    bot = get_bot()
+    try:
+        doc = BufferedInputFile(data, filename=filename)
+        await bot.send_document(
+            chat_id=chat_id,
+            document=doc,
+            caption=(caption or "")[:1024] or None,
+            parse_mode="HTML" if caption else None,
+        )
+        logger.info("Document bytes %s sent to chat_id=%d", filename, chat_id)
+        return True
+    except TelegramAPIError as exc:
+        logger.error(
+            "Telegram API error send_document_bytes chat_id=%d: %s", chat_id, exc
+        )
+        return False
 
 
 async def send_medication_alert(

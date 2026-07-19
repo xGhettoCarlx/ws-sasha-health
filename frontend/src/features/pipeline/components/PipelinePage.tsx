@@ -83,20 +83,14 @@ export default function PipelinePage() {
             ))}
           </section>
 
-          <div className="grid grid-cols-2 gap-2">
-            <Link to="/timeline" className="block">
-              <GlassCard padding="md" className="pressable h-full">
-                <p className="text-[15px] font-semibold">Таймлайн</p>
-                <p className="text-[12px] text-[#8E8E93] mt-0.5">Прошлое и будущее</p>
-              </GlassCard>
-            </Link>
-            <Link to="/trojan" className="block">
-              <GlassCard padding="md" className="pressable h-full">
-                <p className="text-[15px] font-semibold">Троянский конь</p>
-                <p className="text-[12px] text-[#8E8E93] mt-0.5">Жалобы + усиления</p>
-              </GlassCard>
-            </Link>
-          </div>
+          <Link to="/timeline" className="block">
+            <GlassCard padding="md" className="pressable">
+              <p className="text-[15px] font-semibold">Таймлайн</p>
+              <p className="text-[12px] text-[#8E8E93] mt-0.5">
+                Будущие визиты · «Нужен промпт» → Gemini-файл в Telegram
+              </p>
+            </GlassCard>
+          </Link>
         </>
       )}
     </div>

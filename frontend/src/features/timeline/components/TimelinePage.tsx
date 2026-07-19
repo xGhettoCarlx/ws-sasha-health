@@ -1,17 +1,46 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, History, ShieldAlert, ShieldCheck } from "lucide-react";
+import {
+  CalendarClock,
+  FileText,
+  History,
+  ShieldAlert,
+  ShieldCheck,
+} from "lucide-react";
 import {
   GlassCard,
   PageHeader,
   SectionHeader,
   StatusPill,
 } from "../../../components/apple";
-import { fetchTimeline, setInsuranceWarned } from "../../../lib/services";
+import {
+  fetchTimeline,
+  requestVisitPrompt,
+  setInsuranceWarned,
+} from "../../../lib/services";
 import type { VisitItem } from "../../../lib/types";
 import { cn } from "../../../lib/utils";
 
+function isFutureVisit(item: VisitItem, todayIso: string): boolean {
+  if (item.status === "completed" || item.status === "cancelled") return false;
+  const raw = item.effective_date || item.visit_date || item.date || "";
+  if (!raw) return item.status === "planned" || item.status === "pending";
+  const d = raw.slice(0, 10);
+  return d >= todayIso.slice(0, 10);
+}
+
+type PromptFeedback = {
+  visitId: string;
+  telegram_sent?: boolean;
+  hint?: string;
+  error?: string;
+};
+
 export default function TimelinePage() {
   const qc = useQueryClient();
+  const [promptFb, setPromptFb] = useState<PromptFeedback | null>(null);
+  const [promptBusyId, setPromptBusyId] = useState<string | null>(null);
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ["timeline"],
     queryFn: fetchTimeline,
@@ -24,6 +53,29 @@ export default function TimelinePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["timeline"] });
       qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
+  });
+
+  const promptMut = useMutation({
+    mutationFn: (visitId: string) => requestVisitPrompt(visitId),
+    onMutate: (visitId) => {
+      setPromptBusyId(visitId);
+      setPromptFb(null);
+    },
+    onSuccess: (res, visitId) => {
+      setPromptFb({
+        visitId,
+        telegram_sent: res.telegram_sent,
+        hint: res.hint,
+      });
+      setPromptBusyId(null);
+    },
+    onError: (err, visitId) => {
+      setPromptFb({
+        visitId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      setPromptBusyId(null);
     },
   });
 
@@ -78,10 +130,18 @@ export default function TimelinePage() {
                   <FutureCard
                     key={item.id || `${item.doctor}-${item.date}`}
                     item={item}
-                    busy={warnMut.isPending}
+                    today={data.today}
+                    busy={
+                      warnMut.isPending ||
+                      (!!item.id && promptBusyId === item.id)
+                    }
+                    feedback={
+                      item.id && promptFb?.visitId === item.id ? promptFb : null
+                    }
                     onToggleInsurance={(id, next) =>
                       warnMut.mutate({ id, v: next })
                     }
+                    onNeedPrompt={(id) => promptMut.mutate(id)}
                   />
                 ))}
               </div>
@@ -176,15 +236,22 @@ function Stat({
 
 function FutureCard({
   item,
+  today,
   busy,
+  feedback,
   onToggleInsurance,
+  onNeedPrompt,
 }: {
   item: VisitItem;
+  today: string;
   busy: boolean;
+  feedback?: PromptFeedback | null;
   onToggleInsurance: (id: string, next: boolean) => void;
+  onNeedPrompt: (id: string) => void;
 }) {
   const warned = !!item.insurance_warned;
   const id = item.id;
+  const showPrompt = isFutureVisit(item, today);
   return (
     <GlassCard padding="md">
       <div className="flex items-start justify-between gap-2">
@@ -214,29 +281,54 @@ function FutureCard({
       </div>
 
       {id && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onToggleInsurance(id, !warned)}
-          className={cn(
-            "mt-3 w-full h-10 rounded-2xl text-[13px] font-semibold pressable inline-flex items-center justify-center gap-1.5 disabled:opacity-50",
-            warned
-              ? "bg-[#34C759]/15 text-[#248A3D]"
-              : "bg-[#FF9500]/15 text-[#C93400]",
+        <div className="mt-3 space-y-2">
+          {showPrompt && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onNeedPrompt(id)}
+              className="w-full h-10 rounded-2xl text-[13px] font-semibold pressable inline-flex items-center justify-center gap-1.5 disabled:opacity-50 bg-[#007AFF] text-white"
+            >
+              <FileText className="w-4 h-4" />
+              {busy ? "Готовлю…" : "Нужен промпт"}
+            </button>
           )}
-        >
-          {warned ? (
-            <>
-              <ShieldCheck className="w-4 h-4" />
-              Страховая предупреждена
-            </>
-          ) : (
-            <>
-              <ShieldAlert className="w-4 h-4" />
-              Отметить: страховая предупреждена
-            </>
+          {feedback && !feedback.error && (
+            <p className="text-[12px] text-center text-[#8E8E93] leading-snug">
+              {feedback.telegram_sent
+                ? "✓ Markdown отправлен в Telegram"
+                : feedback.hint || "Файл промпта сохранён"}
+            </p>
           )}
-        </button>
+          {feedback?.error && (
+            <p className="text-[12px] text-center text-[#FF3B30]">
+              {feedback.error}
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onToggleInsurance(id, !warned)}
+            className={cn(
+              "w-full h-10 rounded-2xl text-[13px] font-semibold pressable inline-flex items-center justify-center gap-1.5 disabled:opacity-50",
+              warned
+                ? "bg-[#34C759]/15 text-[#248A3D]"
+                : "bg-[#FF9500]/15 text-[#C93400]",
+            )}
+          >
+            {warned ? (
+              <>
+                <ShieldCheck className="w-4 h-4" />
+                Страховая предупреждена
+              </>
+            ) : (
+              <>
+                <ShieldAlert className="w-4 h-4" />
+                Отметить: страховая предупреждена
+              </>
+            )}
+          </button>
+        </div>
       )}
     </GlassCard>
   );

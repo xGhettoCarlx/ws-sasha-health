@@ -25,17 +25,11 @@ const ComplaintsPage = lazy(
 const NavigatorPage = lazy(
   () => import("../features/navigator/components/NavigatorPage"),
 );
-const PrevisitPage = lazy(
-  () => import("../features/previsit/components/PrevisitPage"),
-);
 const PipelinePage = lazy(
   () => import("../features/pipeline/components/PipelinePage"),
 );
 const TimelinePage = lazy(
   () => import("../features/timeline/components/TimelinePage"),
-);
-const TrojanHorsePage = lazy(
-  () => import("../features/trojan/components/TrojanHorsePage"),
 );
 const InsurancePage = lazy(
   () => import("../features/insurance/components/InsurancePage"),
@@ -90,15 +84,7 @@ export const routes: ReactNode = (
           </SuspensePage>
         }
       />
-      {/* Deep links kept (not in tab bar) */}
-      <Route
-        path="trojan"
-        element={
-          <SuspensePage>
-            <TrojanHorsePage />
-          </SuspensePage>
-        }
-      />
+      {/* Deep links kept (not in tab bar). trojan/previsit removed → Timeline prompt */}
       <Route
         path="checkups"
         element={
@@ -123,14 +109,8 @@ export const routes: ReactNode = (
           </SuspensePage>
         }
       />
-      <Route
-        path="previsit"
-        element={
-          <SuspensePage>
-            <PrevisitPage />
-          </SuspensePage>
-        }
-      />
+      <Route path="trojan" element={<Navigate to="/timeline" replace />} />
+      <Route path="previsit" element={<Navigate to="/timeline" replace />} />
       <Route
         path="records"
         element={

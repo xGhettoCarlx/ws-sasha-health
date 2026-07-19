@@ -23,6 +23,9 @@ from app.storage import MDStorage
 
 router = APIRouter(tags=["pipeline"])
 
+# re-export schedule dir name used by prompt trigger
+_PROMPT_SCHEDULE = "schedule"
+
 SCHEDULE_DIR = "schedule"
 TROJAN_PATH = "trojan_horse.md"
 COMPLAINTS_PATH = "копилка_жалоб.md"
@@ -565,6 +568,106 @@ class TrojanComposeBody(BaseModel):
     specialty: str
     complaint_ids: list[str] = Field(default_factory=list)
     booster_ids: list[str] = Field(default_factory=list)
+
+
+class VisitPromptBody(BaseModel):
+    """Optional overrides when triggering pre-visit prompt to Telegram."""
+
+    chat_id: Optional[int] = None
+    dry_run: bool = False  # force no Telegram even if token set
+
+
+@router.post("/api/visits/{visit_id}/prompt")
+async def trigger_visit_prompt(
+    visit_id: str,
+    body: VisitPromptBody | None = None,
+    user: dict = require_auth,
+):
+    """Build Gemini pre-visit markdown for a future visit and push to Telegram.
+
+    Timeline button «Нужен промпт» → this endpoint.
+    Always writes a .md under data/export/prompts/; Telegram send if BOT_TOKEN real.
+    """
+    from app.bot import bot_token_usable, send_document
+    from app.visit_prompt import (
+        build_visit_prompt_markdown,
+        load_visit,
+        resolve_operator_chat_id,
+        write_prompt_file,
+    )
+
+    body = body or VisitPromptBody()
+    store = _store()
+    try:
+        visit = load_visit(store, visit_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"visit not found: {visit_id}") from None
+
+    # Only future / open visits (date >= today or no date with planned/pending)
+    today = date.today()
+    eff = _effective_date(visit)
+    status = str(visit.get("status") or "")
+    is_future = False
+    if eff and eff >= today and status != "cancelled":
+        is_future = True
+    elif not eff and status in ("planned", "pending", ""):
+        is_future = True
+    if status == "completed":
+        is_future = False
+    if not is_future:
+        raise HTTPException(
+            status_code=400,
+            detail="prompt only for future/planned visits",
+        )
+
+    md = build_visit_prompt_markdown(visit, store=store)
+    path = write_prompt_file(md, visit_id=visit_id, store=store)
+    chat_id = body.chat_id or resolve_operator_chat_id(user)
+
+    telegram_sent = False
+    telegram_error: Optional[str] = None
+    if body.dry_run:
+        telegram_error = "dry_run"
+    elif not bot_token_usable():
+        telegram_error = "BOT_TOKEN placeholder or missing — file saved only"
+    elif not chat_id:
+        telegram_error = "no chat_id (set TELEGRAM_CHAT_ID)"
+    else:
+        try:
+            caption = (
+                f"🧾 <b>Промпт к визиту</b>\n"
+                f"{visit.get('doctor') or visit.get('specialty') or visit_id}\n"
+                f"{visit.get('visit_date') or visit.get('date') or ''} "
+                f"{visit.get('time') or ''}"
+            ).strip()
+            telegram_sent = await send_document(
+                int(chat_id),
+                path,
+                caption=caption,
+                filename=path.name,
+            )
+            if not telegram_sent:
+                telegram_error = "Telegram send_document returned False"
+        except Exception as exc:
+            telegram_error = str(exc)[:300]
+
+    return {
+        "ok": True,
+        "visit_id": visit_id,
+        "specialty": visit.get("specialty"),
+        "doctor": visit.get("doctor"),
+        "path": str(path),
+        "bytes": path.stat().st_size,
+        "chat_id": chat_id,
+        "telegram_sent": telegram_sent,
+        "telegram_error": telegram_error,
+        "bot_token_usable": bot_token_usable(),
+        "hint": (
+            "Markdown-файл в Telegram"
+            if telegram_sent
+            else f"Файл сохранён локально: {path}. {telegram_error or ''}"
+        ),
+    }
 
 
 @router.post("/api/trojan/compose")

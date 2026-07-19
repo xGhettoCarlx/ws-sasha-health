@@ -1,579 +1,363 @@
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+/**
+ * DMS Insurance workspace — policy limits + covered/excluded + Trojan Horse.
+ * Data: /api/insurance/ ← data/страховка.md
+ */
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
-  Shield, CheckCircle, XCircle, Activity,
-  Stethoscope, Syringe, Scan, FlaskConical, Phone,
+  CheckCircle2,
+  ChevronDown,
+  Mail,
+  Phone,
+  Shield,
+  XCircle,
 } from "lucide-react";
-import { PageSkeleton } from "../../../components/ui/PageSkeleton";
-import { ErrorState } from "../../../components/ErrorState";
-import TelegramBackButton from "../../../components/TelegramBackButton";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "../../../components/ui/dialog";
+  GlassCard,
+  PageHeader,
+  SectionHeader,
+  StatusPill,
+} from "../../../components/apple";
 import { fetchInsurance } from "../../../lib/services";
-import type { InsuranceSchema } from "../../../lib/types";
+import type { InsurancePolicy, InsuranceSchema } from "../../../lib/types";
+import { TrojanHorsePanel } from "../../trojan/components/TrojanHorsePanel";
+import { cn } from "../../../lib/utils";
 
-type PageState = "loading" | "error" | "data";
-
-// Hardcoded contract limits from страховка.md
-interface LimitItem {
-  icon: typeof Shield;
-  label: string;
-  used: number;
-  total: number;
-}
-
-const STRICT_LIMITS: LimitItem[] = [
-  { icon: Scan, label: "МРТ / КТ", used: 0, total: 1 },
-  { icon: Stethoscope, label: "Эндоскопия (ФГДС/ФКС)", used: 0, total: 2 },
-  { icon: Syringe, label: "Уколы / блокады", used: 0, total: 10 },
-  { icon: Activity, label: "Экстр. стоматология", used: 0, total: 1 },
+/** Belgosstrakh АВгос+ком — structured from страховка.md body */
+const COVERED_GROUPS: { title: string; items: string[] }[] = [
+  {
+    title: "Консультации",
+    items: [
+      "Все специалисты (кроме диетолога, сомнолога, трихолога, косметолога, психиатра, нарколога, мануального терапевта, стоматолога-ортопеда/ортодонта/имплантолога)",
+      "Высоковостребованные (>70 BYN) — франшиза 40%",
+      "Гинеколог — до 5 раз; уролог — до 5 раз",
+    ],
+  },
+  {
+    title: "Диагностика",
+    items: [
+      "Лаборатории: Хеликс, Инвитро, Синлаб-ЕМЛ, гос.",
+      "УЗИ — без ограничений",
+      "КТ — 1 раз за период",
+      "МРТ — 1 раз за период",
+      "ФГДС/ФКС — 2 раза в совокупности",
+    ],
+  },
+  {
+    title: "Лечение",
+    items: [
+      "Малые операции (в гос.)",
+      "Уколы / блокады — до 10",
+      "Массаж — 10 сеансов, физиотерапия",
+      "Экстренная стоматология — 1 раз",
+    ],
+  },
 ];
 
-const UNLIMITED_ITEMS = [
-  { icon: Stethoscope, label: "Консультации всех специалистов" },
-  { icon: FlaskConical, label: "Лаборатории (Хеликс, Инвитро, Синлаб)" },
-  { icon: Activity, label: "УЗИ — без ограничений" },
-];
-
-const EXCLUDED_ITEMS = [
+const NOT_COVERED: string[] = [
   "Лекарства, БАДы, витамины",
-  "Плановая стоматология, протезирование",
+  "Плановая стоматология, протезирование, имплантация",
+  "Онкология, ВИЧ, гепатиты B/C, туберкулёз, диабет 1 типа, психиатрия",
+  "Беременность, роды",
+  "Капельницы, мануальная терапия, остеопатия",
 ];
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
+function money(n: number | undefined | null): string {
+  return Number(n ?? 0).toLocaleString("ru-RU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   });
 }
 
-
-// ─── Modal Component ─────────────────────────────────────────────────────────
-
-interface InsuranceModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
-
-export function InsuranceModal({ open, onOpenChange }: InsuranceModalProps) {
-  const [state, setState] = useState<PageState>("loading");
-  const [data, setData] = useState<InsuranceSchema | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string>("");
-
-  const loadData = async () => {
-    setState("loading");
-    setErrorMessage("");
-    try {
-      const result = await fetchInsurance();
-      setData(result);
-      setState("data");
-    } catch (err) {
-      setErrorMessage(
-        err instanceof Error ? err.message : "Не удалось загрузить данные страховки",
-      );
-      setState("error");
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const policy = data?.policies?.[0];
-  const totalSum = policy?.sum_insured ?? 37651.83;
-  const expiry = policy?.expiry ?? "2027-01-24";
-  const isActive = new Date(expiry) > new Date();
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-[#1F2937]">
-            <Shield className="h-5 w-5" />
-            Страховка
-          </DialogTitle>
-        </DialogHeader>
-
-        {state === "loading" && <div className="py-8"><PageSkeleton variant="detail" /></div>}
-
-        {state === "error" && (
-          <ErrorState
-            message={errorMessage || "Не удалось загрузить данные страховки"}
-            onRetry={() => loadData()}
-          />
-        )}
-
-        {state === "data" && (
-          <div className="space-y-5">
-            {/* Hero Card */}
-            <div
-              className="rounded-2xl p-5 relative overflow-hidden"
-              style={{
-                background: "linear-gradient(135deg, #1a3a2a 0%, #0d2818 50%, #1a3a2a 100%)",
-                border: "1px solid rgba(34, 197, 94, 0.2)",
-              }}
-            >
-              <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10"
-                style={{ background: "radial-gradient(circle, #22c55e, transparent)" }} />
-              <div className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full opacity-5"
-                style={{ background: "radial-gradient(circle, #22c55e, transparent)" }} />
-              <div className="flex items-start justify-between mb-4 relative z-10 gap-3">
-                <div>
-                  <p className="text-sm font-semibold tracking-wider text-[#94A3B8]">Белгосстрах</p>
-                  <p className="text-[20px] font-bold text-white mt-0.5">АВгос+ком</p>
-                </div>
-                {isActive ? (
-                  <div className="shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold"
-                    style={{ backgroundColor: "rgba(34, 197, 94, 0.2)", color: "#4ADE80" }}>
-                    Активна до {formatDate(expiry)}
-                  </div>
-                ) : (
-                  <div className="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold"
-                    style={{ backgroundColor: "rgba(239, 68, 68, 0.2)", color: "#f87171" }}>
-                    Истекла
-                  </div>
-                )}
-              </div>
-              <div className="relative z-10">
-                <p className="text-xs text-white/50 mb-1">Общий лимит</p>
-                <p className="font-bold tracking-tight text-2xl text-white/90">
-                  {totalSum.toLocaleString("ru-RU")} BYN
-                </p>
-              </div>
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10 relative z-10">
-                <div>
-                  <p className="text-[10px] text-white/40">Страхователь</p>
-                  <p className="text-xs text-white/70">ООО «Фабрика Роста»</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-white/40">Договор</p>
-                  <p className="text-xs text-white/70">БРМ 0011726</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Strict Limits */}
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide mb-3 text-[#6B7280]">Строгие лимиты</h2>
-              <div className="space-y-2.5">
-                {STRICT_LIMITS.map((item) => {
-                  const Icon = item.icon;
-                  const isExhausted = item.used >= item.total;
-                  const pct = (item.used / item.total) * 100;
-                  return (
-                    <div key={item.label} className="bg-[#F3F4F6] rounded-xl py-3.5 px-4"
-                      style={{ opacity: isExhausted ? 0.5 : 1 }}>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2.5">
-                          <Icon className="h-4 w-4" style={{ color: isExhausted ? "#EF4444" : "#007AFF" }} />
-                          <span className="text-sm font-medium text-[#1F2937]">{item.label}</span>
-                        </div>
-                        <span className="text-xs font-semibold"
-                          style={{ color: isExhausted ? "#EF4444" : "#1F2937" }}>
-                          {isExhausted ? "Исчерпано" : `${item.used} из ${item.total}`}
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 rounded-full overflow-hidden bg-[#E5E7EB]">
-                        <div className="h-full rounded-full transition-all duration-700"
-                          style={{ width: `${Math.min(pct, 100)}%`,
-                            background: isExhausted ? "#EF4444" : "#60A5FA" }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Unlimited */}
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide mb-3 text-[#6B7280]">Без ограничений</h2>
-              <div className="space-y-1.5">
-                {UNLIMITED_ITEMS.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <div key={item.label} className="flex items-center gap-2.5 py-2">
-                      <CheckCircle className="h-4 w-4 shrink-0 text-[#22C55E]" />
-                      <Icon className="h-3.5 w-3.5 text-[#6B7280]" />
-                      <span className="text-sm text-[#1F2937]">{item.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Exclusions */}
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide mb-3 text-[#6B7280]">Не покрывается</h2>
-              <div className="space-y-1.5">
-                {EXCLUDED_ITEMS.map((item) => (
-                  <div key={item} className="flex items-center gap-2.5 py-2">
-                    <XCircle className="h-4 w-4 shrink-0 text-[#D1D5DB]" />
-                    <span className="text-sm text-[#9CA3AF]">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Contacts */}
-            <div className="space-y-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wide mb-1 text-[#6B7280]">Контакты страховой</h2>
-              <a href="tel:+375222713071"
-                className="flex items-center gap-3 rounded-xl p-4 transition-opacity hover:opacity-80 bg-[#F3F4F6]">
-                <span className="text-lg">📞</span>
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-[#6B7280]" />
-                  <span className="text-sm text-[#1F2937]">+375 222 71 30 71</span>
-                </div>
-              </a>
-              <a href="mailto:dms.mogilev@bgs.by"
-                className="flex items-center gap-3 rounded-xl p-4 transition-opacity hover:opacity-80 bg-[#F3F4F6]">
-                <span className="text-lg">✉️</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-[#1F2937]">dms.mogilev@bgs.by</span>
-                </div>
-              </a>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
+function policyFromSchema(data: InsuranceSchema | undefined): InsurancePolicy | null {
+  if (!data) return null;
+  const p = data.policies?.[0];
+  if (!p) return null;
+  return p;
 }
 
 export default function InsurancePage() {
-  const [state, setState] = useState<PageState>("loading");
-  const [data, setData] = useState<InsuranceSchema | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string>("");
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["insurance"],
+    queryFn: fetchInsurance,
+    staleTime: 60_000,
+  });
 
-  const loadData = async () => {
-    setState("loading");
-    setErrorMessage("");
-    try {
-      const result = await fetchInsurance();
-      setData(result);
-      setState("data");
-    } catch (err) {
-      setErrorMessage(
-        err instanceof Error ? err.message : "Не удалось загрузить данные страховки",
-      );
-      setState("error");
-    }
-  };
+  const [openCovered, setOpenCovered] = useState(true);
+  const [openExcluded, setOpenExcluded] = useState(false);
+  const [openTrojan, setOpenTrojan] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const policy = policyFromSchema(data);
+  const sum = policy?.sum_insured ?? 0;
+  const remaining = policy?.remaining ?? 0;
+  const spent = policy?.spent ?? Math.max(0, sum - remaining);
+  const usedPct = sum > 0 ? Math.min(100, Math.round((spent / sum) * 100)) : 0;
+  const expiry = policy?.expiry || "—";
+  const active =
+    expiry !== "—" && !Number.isNaN(Date.parse(expiry))
+      ? new Date(expiry) > new Date()
+      : true;
 
-  if (state === "loading") return <PageSkeleton variant="detail" />;
+  const meta = useMemo(() => {
+    const src = data?.source || "";
+    const contract = src.match(/№\s*([^\s]+)/)?.[1] || "";
+    return {
+      contract,
+      source: src,
+      program:
+        (policy as InsurancePolicy & { program?: string })?.program ||
+        "АВгос+ком",
+      insurer:
+        (policy as InsurancePolicy & { insurer?: string })?.insurer ||
+        "Белгосстрах",
+      holder:
+        (policy as InsurancePolicy & { policyholder?: string })?.policyholder ||
+        "",
+      premium: (policy as InsurancePolicy & { premium?: number })?.premium,
+    };
+  }, [data, policy]);
 
-  if (state === "error") {
+  if (isLoading) {
     return (
-      <ErrorState
-        message={errorMessage || "Не удалось загрузить данные страховки"}
-        onRetry={() => loadData()}
-      />
+      <div className="page-shell section-gap">
+        <PageHeader subtitle="ДМС" title="Страховка" />
+        <GlassCard padding="lg">
+          <p className="text-[#8E8E93]">Загрузка полиса…</p>
+        </GlassCard>
+      </div>
     );
   }
 
-  const policy = data?.policies?.[0];
-  const totalSum = policy?.sum_insured ?? 37651.83;
-  const expiry = policy?.expiry ?? "2027-01-24";
-  const isActive = new Date(expiry) > new Date();
+  if (isError || !data) {
+    return (
+      <div className="page-shell section-gap">
+        <PageHeader subtitle="ДМС" title="Страховка" />
+        <GlassCard padding="lg">
+          <p className="text-[#FF3B30]">Не удалось загрузить /api/insurance/</p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="mt-3 text-[14px] text-[#007AFF] font-medium"
+          >
+            Повторить
+          </button>
+        </GlassCard>
+      </div>
+    );
+  }
 
   return (
-    <motion.div
-      className="p-4 space-y-5 pb-8"
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-    >
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <TelegramBackButton to="/profile" />
-        <Shield
-          className="h-5 w-5"
-          style={{ color: "var(--tg-theme-button-color)" }}
-        />
-        <h1
-          className="text-xl font-semibold"
-          style={{ color: "var(--tg-theme-text-color)" }}
-        >
-          Страховка
-        </h1>
-      </div>
+    <div className="page-shell section-gap">
+      <PageHeader subtitle="Белгосстрах · ДМС" title="Страховка" />
+      <p className="text-[13px] text-[#8E8E93] -mt-2 leading-relaxed">
+        Полис, покрытие и Троянский конь для аппрува чекапов
+      </p>
 
-      {/* ─── Hero Card (bank-card style) ─── */}
-      <motion.div
-        className="rounded-2xl p-5 relative overflow-hidden"
-        style={{
-          background: "linear-gradient(135deg, #1a3a2a 0%, #0d2818 50%, #1a3a2a 100%)",
-          border: "1px solid rgba(34, 197, 94, 0.2)",
-        }}
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.1, duration: 0.4, ease: [0.25, 0.4, 0.25, 1] as const }}
-      >
-        {/* Decorative circles */}
+      {/* Hero policy card */}
+      <GlassCard padding="lg" className="relative overflow-hidden">
         <div
-          className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10"
-          style={{ background: "radial-gradient(circle, #22c55e, transparent)" }}
+          className="absolute inset-0 opacity-90 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(120% 80% at 0% 0%, rgba(52,199,89,0.18), transparent 55%), radial-gradient(80% 60% at 100% 100%, rgba(0,122,255,0.08), transparent 50%)",
+          }}
         />
-        <div
-          className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full opacity-5"
-          style={{ background: "radial-gradient(circle, #22c55e, transparent)" }}
-        />
-
-        {/* Top row: company + badge */}
-        <div className="flex items-start justify-between mb-4 relative z-10 gap-3">
-          <div>
-            <p className="text-sm font-semibold tracking-wider text-[#94A3B8]" style={{ textTransform: "none" }}>Белгосстрах</p>
-            <p className="text-[20px] font-bold text-white mt-0.5">АВгос+ком</p>
-          </div>
-          {isActive ? (
-            <div
-              className="shrink-0 whitespace-nowrap"
-              style={{
-                backgroundColor: "rgba(34, 197, 94, 0.2)",
-                color: "#4ADE80",
-                borderRadius: "9999px",
-                padding: "4px 10px",
-                fontSize: "12px",
-                fontWeight: 600,
-              }}
-            >
-              Активна до {formatDate(expiry)}
+        <div className="relative">
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-11 h-11 rounded-2xl bg-[#34C759]/20 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-[#34C759]" />
+              </div>
+              <div>
+                <p className="text-[17px] font-semibold">
+                  {policy?.policy || "ДМС"}
+                </p>
+                <p className="text-[12px] text-[#8E8E93]">
+                  {meta.insurer} · {meta.program}
+                </p>
+              </div>
             </div>
-          ) : (
+            <StatusPill tone={active ? "ok" : "danger"}>
+              {active ? "активен" : "истёк"}
+            </StatusPill>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <p className="text-[11px] font-semibold text-[#8E8E93] uppercase">
+                Лимит
+              </p>
+              <p className="text-[20px] font-semibold tabular-nums">
+                {money(sum)}{" "}
+                <span className="text-[13px] font-medium text-[#8E8E93]">BYN</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-[#8E8E93] uppercase">
+                Остаток
+              </p>
+              <p className="text-[20px] font-semibold tabular-nums text-[#34C759]">
+                {money(remaining)}{" "}
+                <span className="text-[13px] font-medium text-[#8E8E93]">BYN</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="h-2 rounded-full bg-black/5 overflow-hidden mb-2">
             <div
-              className="shrink-0"
-              style={{
-                backgroundColor: "rgba(239, 68, 68, 0.2)",
-                color: "#f87171",
-                borderRadius: "9999px",
-                padding: "4px 10px",
-                fontSize: "12px",
-                fontWeight: 600,
-              }}
-            >
-              Истекла
+              className="h-full rounded-full bg-[#34C759]"
+              style={{ width: `${100 - usedPct}%` }}
+            />
+          </div>
+          <p className="text-[12px] text-[#8E8E93]">
+            Израсходовано {money(spent)} BYN ({usedPct}%) · срок до{" "}
+            <span className="font-medium text-[#1C1C1E]">{expiry}</span>
+          </p>
+
+          {(meta.contract || meta.holder || meta.premium != null) && (
+            <div className="mt-3 pt-3 border-t border-black/5 space-y-1">
+              {meta.contract && (
+                <p className="text-[12px] text-[#8E8E93]">
+                  Договор № <span className="text-[#1C1C1E]">{meta.contract}</span>
+                </p>
+              )}
+              {meta.holder && (
+                <p className="text-[12px] text-[#8E8E93]">
+                  Страхователь:{" "}
+                  <span className="text-[#1C1C1E]">{meta.holder}</span>
+                </p>
+              )}
+              {meta.premium != null && (
+                <p className="text-[12px] text-[#8E8E93]">
+                  Взнос:{" "}
+                  <span className="text-[#1C1C1E]">{money(meta.premium)} BYN</span>
+                </p>
+              )}
+              {meta.source && (
+                <p className="text-[11px] text-[#AEAEB2] leading-snug">{meta.source}</p>
+              )}
             </div>
           )}
         </div>
+      </GlassCard>
 
-        {/* Total limit */}
-        <div className="relative z-10">
-          <p className="text-xs text-white/50 mb-1">Общий лимит</p>
-          <p
-            className="font-bold tracking-tight"
-            style={{ fontSize: "24px", color: "rgba(255,255,255,0.9)" }}
-          >
-            {totalSum.toLocaleString("ru-RU")} BYN
-          </p>
-        </div>
-
-        {/* Bottom row */}
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10 relative z-10">
-          <div>
-            <p className="text-[10px] text-white/40">Страхователь</p>
-            <p className="text-xs text-white/70">ООО «Фабрика Роста»</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-white/40">Договор</p>
-            <p className="text-xs text-white/70">БРМ 0011726</p>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* ─── Strict Limits ─── */}
-      <motion.section
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2, duration: 0.4 }}
-      >
-        <h2
-          className="text-sm font-semibold uppercase tracking-wide mb-3"
-          style={{ color: "var(--tg-theme-hint-color)" }}
+      {/* Covered */}
+      <section>
+        <button
+          type="button"
+          onClick={() => setOpenCovered((v) => !v)}
+          className="w-full flex items-center justify-between px-0.5 mb-2 pressable"
         >
-          Строгие лимиты
-        </h2>
-        <div className="space-y-2.5">
-          {STRICT_LIMITS.map((item, i) => {
-            const Icon = item.icon;
-            const isExhausted = item.used >= item.total;
-            const pct = (item.used / item.total) * 100;
-
-            return (
-              <motion.div
-                key={item.label}
-                className="bg-sh-surface rounded-xl py-3.5 px-4"
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: isExhausted ? 0.5 : 1, x: 0 }}
-                transition={{ delay: 0.25 + i * 0.05, duration: 0.3 }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2.5">
-                    <Icon
-                      className="h-4 w-4"
-                      style={{
-                        color: isExhausted ? "#EF4444" : "var(--tg-theme-button-color)",
-                      }}
-                    />
-                    <span
-                      className="text-sm font-medium"
-                      style={{ color: "var(--tg-theme-text-color)" }}
+          <SectionHeader title="Что покрывается ДМС" />
+          <ChevronDown
+            className={cn(
+              "w-5 h-5 text-[#8E8E93] transition-transform",
+              openCovered && "rotate-180",
+            )}
+          />
+        </button>
+        {openCovered && (
+          <div className="space-y-2">
+            {COVERED_GROUPS.map((g) => (
+              <GlassCard key={g.title} padding="md">
+                <p className="text-[14px] font-semibold mb-2 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-[#34C759]" />
+                  {g.title}
+                </p>
+                <ul className="space-y-1.5">
+                  {g.items.map((item) => (
+                    <li
+                      key={item}
+                      className="text-[13px] text-[#1C1C1E]/90 leading-snug pl-1 flex gap-2"
                     >
-                      {item.label}
-                    </span>
-                  </div>
-                  <span
-                    className="text-xs font-semibold text-white"
-                    style={{
-                      color: isExhausted ? "#EF4444" : "#FFFFFF",
-                    }}
-                  >
-                    {isExhausted ? "Исчерпано" : `${item.used} из ${item.total}`}
-                  </span>
-                </div>
-                {/* Progress bar */}
-                <div
-                  className="w-full h-1.5 rounded-full overflow-hidden"
-                  style={{
-                    background: "var(--tg-theme-secondary-bg-color, rgba(255,255,255,0.06))",
-                  }}
+                      <span className="text-[#34C759] shrink-0">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </GlassCard>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Not covered */}
+      <section>
+        <button
+          type="button"
+          onClick={() => setOpenExcluded((v) => !v)}
+          className="w-full flex items-center justify-between px-0.5 mb-2 pressable"
+        >
+          <SectionHeader title="Что не покрывается" />
+          <ChevronDown
+            className={cn(
+              "w-5 h-5 text-[#8E8E93] transition-transform",
+              openExcluded && "rotate-180",
+            )}
+          />
+        </button>
+        {openExcluded && (
+          <GlassCard padding="md">
+            <ul className="space-y-2">
+              {NOT_COVERED.map((item) => (
+                <li
+                  key={item}
+                  className="text-[13px] leading-snug flex gap-2 items-start"
                 >
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{
-                      width: `${Math.min(pct, 100)}%`,
-                      background: isExhausted
-                        ? "#EF4444"
-                        : "#60A5FA",
-                    }}
-                  />
-                </div>
-              </motion.div>
-            );
-          })}
+                  <XCircle className="w-4 h-4 text-[#FF3B30] shrink-0 mt-0.5" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </GlassCard>
+        )}
+      </section>
+
+      {/* Contacts */}
+      <section>
+        <SectionHeader title="Контакты БГС" />
+        <div className="space-y-2">
+          <a href="tel:+375222713071" className="block">
+            <GlassCard padding="md" pressable className="flex items-center gap-3">
+              <Phone className="w-5 h-5 text-[#007AFF]" />
+              <div>
+                <p className="text-[15px] font-medium">+375 222 71 30 71</p>
+                <p className="text-[12px] text-[#8E8E93]">Телефон</p>
+              </div>
+            </GlassCard>
+          </a>
+          <a href="mailto:dms.mogilev@bgs.by" className="block">
+            <GlassCard padding="md" pressable className="flex items-center gap-3">
+              <Mail className="w-5 h-5 text-[#007AFF]" />
+              <div>
+                <p className="text-[15px] font-medium">dms.mogilev@bgs.by</p>
+                <p className="text-[12px] text-[#8E8E93]">Email · Могилёв</p>
+              </div>
+            </GlassCard>
+          </a>
         </div>
-      </motion.section>
+      </section>
 
-      {/* ─── Unlimited ─── */}
-      <motion.section
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.45, duration: 0.4 }}
-      >
-        <h2
-          className="text-sm font-semibold uppercase tracking-wide mb-3"
-          style={{ color: "var(--tg-theme-hint-color)" }}
+      {/* Trojan Horse */}
+      <section>
+        <button
+          type="button"
+          onClick={() => setOpenTrojan((v) => !v)}
+          className="w-full flex items-center justify-between px-0.5 mb-2 pressable"
         >
-          Без ограничений
-        </h2>
-        <div className="space-y-1.5">
-          {UNLIMITED_ITEMS.map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <motion.div
-                key={item.label}
-                className="flex items-center gap-2.5 py-2"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5 + i * 0.05 }}
-              >
-                <CheckCircle className="h-4 w-4 shrink-0" style={{ color: "#22C55E" }} />
-                <Icon
-                  className="h-3.5 w-3.5"
-                  style={{ color: "var(--tg-theme-hint-color)" }}
-                />
-                <span className="text-sm" style={{ color: "var(--tg-theme-text-color)" }}>
-                  {item.label}
-                </span>
-              </motion.div>
-            );
-          })}
-        </div>
-      </motion.section>
-
-      {/* ─── Exclusions ─── */}
-      <motion.section
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6, duration: 0.4 }}
-      >
-        <h2
-          className="text-sm font-semibold uppercase tracking-wide mb-3"
-          style={{ color: "var(--tg-theme-hint-color)" }}
-        >
-          Не покрывается
-        </h2>
-        <div className="space-y-1.5">
-          {EXCLUDED_ITEMS.map((item, i) => (
-            <motion.div
-              key={item}
-              className="flex items-center gap-2.5 py-2"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.65 + i * 0.05 }}
-            >
-              <XCircle
-                className="h-4 w-4 shrink-0"
-                style={{ color: "rgba(255,255,255,0.2)" }}
-              />
-              <span
-                className="text-sm"
-                style={{ color: "var(--tg-theme-hint-color)", opacity: 0.6 }}
-              >
-                {item}
-              </span>
-            </motion.div>
-          ))}
-        </div>
-      </motion.section>
-
-      {/* ─── Contacts ─── */}
-      <motion.section
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.7 }}
-        className="space-y-3"
-      >
-        <h2
-          className="text-sm font-semibold uppercase tracking-wide mb-1"
-          style={{ color: "var(--tg-theme-hint-color)" }}
-        >
-          Контакты страховой
-        </h2>
-
-        {/* Phone */}
-        <a
-          href="tel:+375222713071"
-          className="flex items-center gap-3 rounded-xl p-4 transition-opacity hover:opacity-80"
-          style={{ background: "rgba(255,255,255,0.05)" }}
-        >
-          <span className="text-lg">📞</span>
-          <div className="flex items-center gap-2">
-            <Phone className="h-4 w-4" style={{ color: "var(--tg-theme-hint-color)" }} />
-            <span className="text-sm" style={{ color: "var(--tg-theme-text-color)" }}>+375 222 71 30 71</span>
-          </div>
-        </a>
-
-        {/* Email */}
-        <a
-          href="mailto:dms.mogilev@bgs.by"
-          className="flex items-center gap-3 rounded-xl p-4 transition-opacity hover:opacity-80"
-          style={{ background: "rgba(255,255,255,0.05)" }}
-        >
-          <span className="text-lg">✉️</span>
-          <div className="flex items-center gap-2">
-            <span className="text-sm" style={{ color: "var(--tg-theme-text-color)" }}>dms.mogilev@bgs.by</span>
-          </div>
-        </a>
-      </motion.section>
-    </motion.div>
+          <SectionHeader title="Троянский конь" />
+          <ChevronDown
+            className={cn(
+              "w-5 h-5 text-[#8E8E93] transition-transform",
+              openTrojan && "rotate-180",
+            )}
+          />
+        </button>
+        <p className="text-[12px] text-[#8E8E93] mb-2 px-0.5">
+          Выбери направление — реальные жалобы + формулировки для аппрува чекапа
+        </p>
+        {openTrojan && <TrojanHorsePanel />}
+      </section>
+    </div>
   );
 }

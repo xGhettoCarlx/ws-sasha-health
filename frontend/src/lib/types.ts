@@ -57,10 +57,15 @@ export interface InsurancePolicy extends CommonBase {
   spent: number;
   remaining: number;
   expiry?: string | null;
+  premium?: number | null;
+  insurer?: string | null;
+  program?: string | null;
+  policyholder?: string | null;
 }
 
 export interface InsuranceSchema extends CommonBase {
   policies: InsurancePolicy[];
+  content?: string | null;
 }
 
 // ─── Fluorography ─────────────────────────────────────────────────────────

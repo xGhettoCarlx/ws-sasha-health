@@ -405,35 +405,43 @@ export function DashboardPage() {
         )}
       </section>
 
-      {/* Insurance strip → tab Страховка */}
-      {data.insurance && (
-        <section>
-          <SectionHeader title="Страховка" />
-          <Link to="/insurance">
-            <GlassCard padding="md" pressable className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-[#34C759]/15 flex items-center justify-center">
-                <Shield className="w-5 h-5 text-[#34C759]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[15px] font-semibold truncate">
-                  {(data.insurance as { policy?: string }).policy || "ДМС"}
-                </p>
-                <p className="text-[13px] text-[#8E8E93]">
-                  остаток{" "}
-                  {Number(
-                    (data.insurance as { remaining?: number }).remaining ?? 0,
-                  ).toLocaleString("ru-RU")}{" "}
-                  BYN
-                  {(data.insurance as { expiry?: string }).expiry
-                    ? ` · до ${(data.insurance as { expiry?: string }).expiry}`
-                    : ""}
-                </p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-[#C7C7CC]" />
-            </GlassCard>
-          </Link>
-        </section>
-      )}
+      {/* Insurance strip → always clickable → tab Страховка */}
+      <section>
+        <SectionHeader title="Страховка" />
+        <Link
+          to="/insurance"
+          className="block active:opacity-80"
+          aria-label="Открыть раздел Страховка"
+        >
+          <GlassCard
+            padding="md"
+            pressable
+            className="flex items-center gap-3 ring-1 ring-[#34C759]/20"
+          >
+            <div className="w-11 h-11 rounded-2xl bg-[#34C759]/15 flex items-center justify-center shrink-0">
+              <Shield className="w-5 h-5 text-[#34C759]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[15px] font-semibold truncate">
+                {(data.insurance as { policy?: string } | null | undefined)
+                  ?.policy || "ДМС · Белгосстрах"}
+              </p>
+              <p className="text-[13px] text-[#8E8E93]">
+                {data.insurance
+                  ? `остаток ${Number(
+                      (data.insurance as { remaining?: number }).remaining ?? 0,
+                    ).toLocaleString("ru-RU")} BYN${
+                      (data.insurance as { expiry?: string }).expiry
+                        ? ` · до ${(data.insurance as { expiry?: string }).expiry}`
+                        : ""
+                    }`
+                  : "Полис, покрытие, Троянский конь"}
+              </p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#C7C7CC] shrink-0" />
+          </GlassCard>
+        </Link>
+      </section>
 
       {/* Clickable diagnoses */}
       {diagnoses.length > 0 && (

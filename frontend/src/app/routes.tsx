@@ -109,7 +109,7 @@ export const routes: ReactNode = (
           </SuspensePage>
         }
       />
-      <Route path="trojan" element={<Navigate to="/timeline" replace />} />
+      <Route path="trojan" element={<Navigate to="/insurance" replace />} />
       <Route path="previsit" element={<Navigate to="/timeline" replace />} />
       <Route
         path="records"

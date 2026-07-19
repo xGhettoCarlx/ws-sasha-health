@@ -117,9 +117,11 @@ export function useAuth(): AuthState {
       }
     }
 
-    // Browser / local: real-data shell via admin web auth (X-User-ID 80101636)
-    // so FastAPI can serve agent files without Telegram initData.
-    if (import.meta.env.DEV || import.meta.env.VITE_LOCAL_AUTH === "true") {
+    // Browser / local shell without Telegram: personal app uses owner web auth
+    // so production `/sh/` serves agent markdown (was tree-shaken when DEV-only).
+    // VITE_LOCAL_AUTH=false disables this for multi-tenant deploys.
+    const localAuthOff = import.meta.env.VITE_LOCAL_AUTH === "false";
+    if (!localAuthOff) {
       const localId = 80101636;
       setUserId(localId);
       setAuth(localId, "web", "");

@@ -81,18 +81,37 @@ def _rebuild_stock(stock_str: str | None, new_number: int) -> str:
     return re.sub(r"\d+", str(new_number), stock_str, count=1)
 
 
+def _infer_is_daily(entry: dict) -> bool:
+    """Agent medicine files often omit is_daily; infer from frequency/notes."""
+    if entry.get("is_daily") is True:
+        return True
+    if entry.get("is_daily") is False and "is_daily" in entry:
+        # Explicit false only if we cannot infer regular use from text
+        pass
+    blob = f"{entry.get('frequency') or ''} {entry.get('notes') or ''}".lower()
+    if any(k in blob for k in ("редко", "по необходимости", "при боли", "при аллерг", "п/н")):
+        return False
+    if any(k in blob for k in ("ежеднев", "регулярр", "на ночь", "утром", "каждый день", "1 раз в день")):
+        return True
+    return bool(entry.get("is_daily", False))
+
+
 def _build_response(i: int, entry: dict) -> dict:
     """Build a JSON-safe dict from raw metadata dict + index-based ID."""
+    stock_raw = entry.get("stock")
+    stock_num = _parse_stock_number(str(stock_raw) if stock_raw is not None else None)
     return {
         "id": i,
         "name": entry.get("name", ""),
         "dose": entry.get("dose", ""),
         "frequency": entry.get("frequency", ""),
-        "stock": entry.get("stock"),
+        # Keep original string for display + numeric for UI progress bars
+        "stock": stock_raw if stock_raw is not None else stock_num,
+        "stock_count": stock_num,
         "prescription_expiry": entry.get("prescription_expiry"),
         "notes": entry.get("notes"),
         "days_left": entry.get("days_left"),
-        "is_daily": entry.get("is_daily", False),
+        "is_daily": _infer_is_daily(entry),
         "daily_dose": entry.get("daily_dose"),
     }
 

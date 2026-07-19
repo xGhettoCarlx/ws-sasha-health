@@ -193,6 +193,46 @@ def _parse_bp(bp: str) -> tuple[int, int] | None:
     return int(m.group(1)), int(m.group(2))
 
 
+def _coerce_weight(val: object) -> float | None:
+    """Accept weight as number or agent string like '99.5 кг' / '99,5'."""
+    if val is None or val == "":
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    m = re.search(r"(\d{2,3}(?:[.,]\d+)?)", str(val).replace(" ", ""))
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _coerce_bp(val: object, content: str = "") -> str | None:
+    """Normalize BP from meta or free-text agent diary body."""
+    if val:
+        s = str(val).strip().replace(" ", "")
+        parsed = _parse_bp(s)
+        if parsed:
+            return f"{parsed[0]}/{parsed[1]}"
+        # e.g. "АД 126/78" already partially clean
+        m = re.search(r"(\d{2,3})\s*/\s*(\d{2,3})", str(val))
+        if m:
+            return f"{m.group(1)}/{m.group(2)}"
+    if content:
+        m = re.search(
+            r"(?:ад|давлен\w*|bp)[^\d]{0,12}(\d{2,3})\s*/\s*(\d{2,3})",
+            content,
+            flags=re.I,
+        )
+        if m:
+            return f"{m.group(1)}/{m.group(2)}"
+        m2 = re.search(r"\b(\d{2,3})\s*/\s*(\d{2,3})\b", content)
+        if m2:
+            return f"{m2.group(1)}/{m2.group(2)}"
+    return None
+
+
 def _list_vitals(store: MDStorage, limit: int = 60) -> list[dict]:
     d = store.base_dir / QUICK_DIR
     if not d.is_dir():
@@ -203,11 +243,26 @@ def _list_vitals(store: MDStorage, limit: int = 60) -> list[dict]:
             meta, content = store.read(str(md.relative_to(store.base_dir)))
         except Exception:
             continue
+        bp = _coerce_bp(meta.get("bp"), content or "")
+        weight = _coerce_weight(
+            meta.get("weight_kg")
+            if meta.get("weight_kg") is not None
+            else meta.get("weight")
+        )
+        # free-text weight in body: "вес 99.5"
+        if weight is None and content:
+            wm = re.search(
+                r"(?:вес|weight)[^\d]{0,12}(\d{2,3}(?:[.,]\d+)?)\s*кг?",
+                content,
+                flags=re.I,
+            )
+            if wm:
+                weight = _coerce_weight(wm.group(1))
         item = {
             "id": md.stem,
             "date": meta.get("date") or md.stem[:10],
-            "bp": meta.get("bp"),
-            "weight_kg": meta.get("weight_kg") or meta.get("weight"),
+            "bp": bp,
+            "weight_kg": weight,
             "when": meta.get("when"),
             "notes": meta.get("notes") or (content.strip() or None),
             "trust_tier": meta.get("trust_tier", "unverified"),
@@ -360,6 +415,40 @@ def _save_complaints(store: MDStorage, entries: list[dict], body: str = "") -> N
 # ── helpers: labs / navigator / previsit ──────────────────────────────────
 
 
+def _is_abnormal_flag(flag: object) -> bool:
+    """Recognize agent-written lab flags (emoji + Latin short codes).
+
+    Agent dual-write uses ✅ / ⚠️ / 🔴 in parameters[].flag (see lab YAML).
+    Older/API-style uses high|low|h|l|↑|↓|abnormal|critical.
+    """
+    if flag is None:
+        return False
+    raw = str(flag).strip()
+    if not raw:
+        return False
+    # Normal markers (agent + Latin)
+    normal = {
+        "✅", "✔", "✓", "ok", "normal", "n", "норм", "в норме", "—", "-",
+    }
+    if raw.lower() in normal or raw in normal:
+        return False
+    # Explicit abnormal markers used in sasha-health data files
+    abnormal_exact = {
+        "🔴", "⚠️", "⚠", "↑", "↓", "⬆", "⬇", "🔺", "🔻",
+        "high", "low", "h", "l", "abnormal", "critical", "out", "panic",
+        "выше", "ниже", "повышен", "понижен",
+    }
+    low = raw.lower()
+    if raw in abnormal_exact or low in abnormal_exact:
+        return True
+    # Any red/warning emoji or arrow remaining
+    if any(ch in raw for ch in ("🔴", "⚠", "↑", "↓", "⬆", "⬇")):
+        return True
+    if low.startswith(("high", "low", "abn", "crit")):
+        return True
+    return False
+
+
 def _scan_lab_flags(store: MDStorage) -> list[dict]:
     """Pull abnormal parameters from Анализы bundles."""
     cat = store.base_dir / "Анализы"
@@ -377,8 +466,8 @@ def _scan_lab_flags(store: MDStorage) -> list[dict]:
             for p in meta.get("parameters") or []:
                 if not isinstance(p, dict):
                     continue
-                flag = (p.get("flag") or "").lower()
-                if flag in ("high", "low", "h", "l", "↑", "↓", "abnormal", "critical"):
+                flag = p.get("flag")
+                if _is_abnormal_flag(flag):
                     abnormal.append({
                         "date": meta.get("date", ""),
                         "test": meta.get("test_name") or bundle.name,
@@ -386,7 +475,7 @@ def _scan_lab_flags(store: MDStorage) -> list[dict]:
                         "value": p.get("value"),
                         "unit": p.get("unit"),
                         "ref_range": p.get("ref_range"),
-                        "flag": flag,
+                        "flag": str(flag) if flag is not None else "",
                     })
     return abnormal
 

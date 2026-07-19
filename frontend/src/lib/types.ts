@@ -84,7 +84,9 @@ export interface Medication {
   name: string;
   dose: string;
   frequency: string;
-  stock: number;
+  /** Agent files use "63 таб"; API may also return stock_count. */
+  stock: number | string | null;
+  stock_count?: number;
   prescription_expiry?: string | null;
   notes?: string | null;
   days_left?: number | null;
@@ -103,6 +105,7 @@ export interface VisitRecord {
   doctor: string;
   institution?: string | null;
   purpose: string;
+  complaint?: string | null;
   status: VisitStatus;
   notes?: string | null;
   content?: string | null;

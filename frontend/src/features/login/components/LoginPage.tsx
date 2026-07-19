@@ -4,16 +4,23 @@ import { Heart, Sparkles } from "lucide-react";
 import { useAuthStore } from "../../../stores/authStore";
 import { GlassCard } from "../../../components/apple";
 
+/** Owner Telegram id — always allowed by FastAPI admin bypass. */
+const OWNER_USER_ID = 80101636;
+
 export const LoginPage: FC = () => {
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
 
-  function enterDemo() {
+  function enterApp() {
     sessionStorage.setItem(
       "web_auth",
-      JSON.stringify({ user_id: 900001, first_name: "Александр", demo: true }),
+      JSON.stringify({
+        user_id: OWNER_USER_ID,
+        first_name: "Александр",
+        local: true,
+      }),
     );
-    setAuth(900001, "web", "");
+    setAuth(OWNER_USER_ID, "web", "");
     navigate("/dashboard", { replace: true });
   }
 
@@ -39,29 +46,29 @@ export const LoginPage: FC = () => {
           </div>
           <h1 className="large-title mb-2">Sasha Health</h1>
           <p className="text-[17px] text-[#8E8E93] leading-relaxed max-w-[280px]">
-            Медицинский дневник в стиле Apple Health — воздух, ясность, контроль.
+            Медицинский дневник — данные из чата с агентом и файлов data/.
           </p>
         </div>
 
         <GlassCard variant="glass" padding="lg" className="space-y-4">
           <button
             type="button"
-            onClick={enterDemo}
+            onClick={enterApp}
             className="w-full h-[52px] rounded-[14px] bg-[#007AFF] text-white text-[17px] font-semibold pressable shadow-[0_8px_24px_rgba(0,122,255,0.35)] focus-ring"
           >
-            Открыть демо
+            Открыть
           </button>
 
           <p className="text-center text-[13px] text-[#8E8E93] flex items-center justify-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-[#FF9500]" />
-            Реалистичные данные для оценки UI
+            Реальные файлы агента · чекапы · жалобы · Pre-Visit
           </p>
         </GlassCard>
 
         <p className="mt-8 text-center footnote">
-          Telegram Login подключается к API в production.
+          В Telegram Mini App вход через initData.
           <br />
-          Сейчас — прототип интерфейса HIG.
+          В браузере — локальный доступ владельца.
         </p>
       </div>
     </div>

@@ -39,15 +39,30 @@ if not _auth_log.handlers:
 # ── helpers ────────────────────────────────────────────────────────────
 
 
+# Placeholder tokens used in local .env / CI — treat as "no real bot" (dev auth).
+_PLACEHOLDER_TOKENS = frozenset({
+    "",
+    "dev-local-placeholder",
+    "ci-dummy-token-not-for-production",
+    "change-me",
+    "your-bot-token",
+    "YOUR_BOT_TOKEN",
+})
+
+
 def get_bot_token() -> str | None:
     """Read the bot token from config.
 
-    Returns None when BOT_TOKEN is not configured (dev mode).
+    Returns None when BOT_TOKEN is not configured or is a known placeholder
+    (local/dev mode — auth accepts mock user without Telegram initData).
     """
     try:
-        return get_settings().BOT_TOKEN
+        token = (get_settings().BOT_TOKEN or "").strip()
     except Exception:
         return None
+    if not token or token in _PLACEHOLDER_TOKENS:
+        return None
+    return token
 
 
 def is_whitelisted(user_id: int) -> bool:
@@ -236,6 +251,7 @@ async def verify_telegram_auth_from_request(request: Request) -> dict:
     2. Extract initData from request.
     3. Validate HMAC signature (soft-fallback for multi-bot).
     4. Apply access gate: unverified users must be in the whitelist.
+    5. Dev mode (no real BOT_TOKEN): allow mock user without credentials.
     """
     path = request.url.path
     if path in ("/health", "/") or path.startswith("/static"):
@@ -265,6 +281,9 @@ async def verify_telegram_auth_from_request(request: Request) -> dict:
     # ── Telegram initData path ──
     init_data = _extract_init_data(request)
     if not init_data:
+        # Local/dev: placeholder BOT_TOKEN → open API for SPA smoke tests
+        if get_bot_token() is None:
+            return {"id": 0, "first_name": "Dev", "verified": True, "auth_method": "dev"}
         raise HTTPException(status_code=401, detail="Authentication required")
 
     user = verify_telegram_auth(init_data)

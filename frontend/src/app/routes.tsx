@@ -37,6 +37,9 @@ const TimelinePage = lazy(
 const TrojanHorsePage = lazy(
   () => import("../features/trojan/components/TrojanHorsePage"),
 );
+const InsurancePage = lazy(
+  () => import("../features/insurance/components/InsurancePage"),
+);
 
 function SuspensePage({ children }: { children: ReactNode }) {
   return <Suspense fallback={<PageSkeleton />}>{children}</Suspense>;
@@ -79,6 +82,15 @@ export const routes: ReactNode = (
           </SuspensePage>
         }
       />
+      <Route
+        path="insurance"
+        element={
+          <SuspensePage>
+            <InsurancePage />
+          </SuspensePage>
+        }
+      />
+      {/* Deep links kept (not in tab bar) */}
       <Route
         path="trojan"
         element={

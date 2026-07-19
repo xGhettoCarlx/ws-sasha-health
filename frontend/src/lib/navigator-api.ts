@@ -70,8 +70,19 @@ export function fetchOverview(): Promise<OverviewResponse> {
   return apiFetch<OverviewResponse>("/api/overview");
 }
 
+export interface VitalItem {
+  id?: string;
+  date?: string;
+  bp?: string | null;
+  weight_kg?: number | null;
+  when?: string | null;
+  notes?: string | null;
+  trust_tier?: string;
+  _path?: string;
+}
+
 export function fetchVitals(limit = 60) {
-  return apiFetch<{ count: number; items: unknown[]; tracked: string[] }>(
+  return apiFetch<{ count: number; items: VitalItem[]; tracked: string[] }>(
     `/api/vitals?limit=${limit}`,
   );
 }

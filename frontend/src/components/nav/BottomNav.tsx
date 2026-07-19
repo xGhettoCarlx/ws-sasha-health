@@ -1,11 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import {
-  House,
-  GitBranch,
-  CalendarRange,
-  Swords,
-  Sparkles,
-} from "lucide-react";
+import { House, GitBranch, CalendarRange, Shield } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 interface Tab {
@@ -14,12 +8,12 @@ interface Tab {
   icon: React.FC<React.ComponentProps<"svg">>;
 }
 
+/** Purged: Жалобы, Маршрут, Троян, Pre-Visit — DoD HEALTH-APP-UX-PURGE */
 const tabs: Tab[] = [
   { to: "/dashboard", label: "Обзор", icon: House },
   { to: "/pipeline", label: "Конвейер", icon: GitBranch },
   { to: "/timeline", label: "Лента", icon: CalendarRange },
-  { to: "/trojan", label: "Троян", icon: Swords },
-  { to: "/previsit", label: "Визит", icon: Sparkles },
+  { to: "/insurance", label: "Страховка", icon: Shield },
 ];
 
 export function BottomNav() {

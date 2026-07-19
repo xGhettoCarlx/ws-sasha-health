@@ -5,6 +5,7 @@ All functions are async and use HTML parse mode.
 """
 
 import logging
+from typing import Any
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError

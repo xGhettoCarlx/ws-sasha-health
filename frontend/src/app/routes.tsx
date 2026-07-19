@@ -28,6 +28,15 @@ const NavigatorPage = lazy(
 const PrevisitPage = lazy(
   () => import("../features/previsit/components/PrevisitPage"),
 );
+const PipelinePage = lazy(
+  () => import("../features/pipeline/components/PipelinePage"),
+);
+const TimelinePage = lazy(
+  () => import("../features/timeline/components/TimelinePage"),
+);
+const TrojanHorsePage = lazy(
+  () => import("../features/trojan/components/TrojanHorsePage"),
+);
 
 function SuspensePage({ children }: { children: ReactNode }) {
   return <Suspense fallback={<PageSkeleton />}>{children}</Suspense>;
@@ -51,6 +60,30 @@ export const routes: ReactNode = (
         element={
           <SuspensePage>
             <DashboardPage />
+          </SuspensePage>
+        }
+      />
+      <Route
+        path="pipeline"
+        element={
+          <SuspensePage>
+            <PipelinePage />
+          </SuspensePage>
+        }
+      />
+      <Route
+        path="timeline"
+        element={
+          <SuspensePage>
+            <TimelinePage />
+          </SuspensePage>
+        }
+      />
+      <Route
+        path="trojan"
+        element={
+          <SuspensePage>
+            <TrojanHorsePage />
           </SuspensePage>
         }
       />

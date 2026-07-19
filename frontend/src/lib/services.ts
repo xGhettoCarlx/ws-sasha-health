@@ -15,10 +15,15 @@ import type {
   InsuranceSchema,
   Medication,
   PendingList,
+  PipelineResponse,
   ProfileSchema,
   QuickRecord,
   StrategySchema,
+  TimelineResponse,
+  TrojanComposeResponse,
+  TrojanResponse,
   UpcomingVisitsResponse,
+  VisitItem,
   VisitsResponse,
 } from "./types";
 
@@ -78,6 +83,47 @@ export function fetchVisits(): Promise<VisitsResponse> {
 
 export function fetchUpcomingVisits(): Promise<UpcomingVisitsResponse> {
   return apiFetch<UpcomingVisitsResponse>("/api/schedule/upcoming");
+}
+
+// ─── Pipeline / Timeline / Trojan ─────────────────────────────────────────
+
+export function fetchPipeline(): Promise<PipelineResponse> {
+  return apiFetch<PipelineResponse>("/api/pipeline");
+}
+
+export function fetchTimeline(): Promise<TimelineResponse> {
+  return apiFetch<TimelineResponse>("/api/timeline");
+}
+
+export function setInsuranceWarned(
+  visitId: string,
+  insurance_warned: boolean,
+): Promise<VisitItem> {
+  return apiFetch<VisitItem>(`/api/schedule/${visitId}/insurance-warned`, {
+    method: "PATCH",
+    body: JSON.stringify({ insurance_warned }),
+  });
+}
+
+export function fetchTrojan(): Promise<TrojanResponse> {
+  return apiFetch<TrojanResponse>("/api/trojan");
+}
+
+export function saveTrojan(data: {
+  specialty: string;
+  complaint_ids: string[];
+  booster_ids: string[];
+  notes?: string;
+}): Promise<TrojanResponse> {
+  return apiPut<TrojanResponse>("/api/trojan", data);
+}
+
+export function composeTrojan(data: {
+  specialty: string;
+  complaint_ids: string[];
+  booster_ids: string[];
+}): Promise<TrojanComposeResponse> {
+  return apiPost<TrojanComposeResponse>("/api/trojan/compose", data);
 }
 
 export function fetchCategories(): Promise<CategoriesResponse> {

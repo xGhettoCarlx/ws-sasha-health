@@ -18,6 +18,7 @@ from app.routes.insurance import router as insurance_router
 from app.routes.media import router as media_router
 from app.routes.navigator_api import router as navigator_router
 from app.routes.pharmacy import router as pharmacy_router
+from app.routes.pipeline import router as pipeline_router
 from app.routes.profile import router as profile_router
 from app.routes.schedule import router as schedule_router
 
@@ -43,6 +44,7 @@ app.include_router(insurance_router)
 app.include_router(media_router)
 app.include_router(navigator_router)
 app.include_router(pharmacy_router)
+app.include_router(pipeline_router)
 app.include_router(profile_router)
 app.include_router(schedule_router)
 

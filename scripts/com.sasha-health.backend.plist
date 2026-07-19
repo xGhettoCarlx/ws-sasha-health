@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Sasha Health FastAPI — 24/7 local backend
+  Install:
+    cp scripts/com.sasha-health.backend.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sasha-health.backend.plist
+  Status:
+    launchctl print gui/$(id -u)/com.sasha-health.backend
+  Logs:
+    logs/launchd.stdout.log / logs/launchd.stderr.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.sasha-health.backend</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/sashak/Station/mini_apps_studio/apps/sasha-health/scripts/run_backend.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/sashak/Station/mini_apps_studio/apps/sasha-health</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/sashak/Station/mini_apps_studio/apps/sasha-health/logs/launchd.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/sashak/Station/mini_apps_studio/apps/sasha-health/logs/launchd.stderr.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/sashak/Station/mini_apps_studio/apps/sasha-health/.venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/sashak</string>
+    <key>STATION_ROOT</key>
+    <string>/Users/sashak/Station</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+</dict>
+</plist>

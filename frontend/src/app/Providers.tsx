@@ -15,8 +15,10 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 5 * 60 * 1000,
       gcTime: 30 * 60 * 1000,
-      retry: 1,
-      refetchOnWindowFocus: false,
+      // Backend may be restarting under launchd KeepAlive — retry briefly
+      retry: 2,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 4000),
+      refetchOnWindowFocus: true,
     },
   },
 });

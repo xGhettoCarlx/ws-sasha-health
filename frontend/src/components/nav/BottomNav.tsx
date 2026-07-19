@@ -1,9 +1,9 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   House,
-  ClipboardCheck,
-  Coins,
-  Compass,
+  GitBranch,
+  CalendarRange,
+  Swords,
   Sparkles,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -16,9 +16,9 @@ interface Tab {
 
 const tabs: Tab[] = [
   { to: "/dashboard", label: "Обзор", icon: House },
-  { to: "/checkups", label: "Чекапы", icon: ClipboardCheck },
-  { to: "/complaints", label: "Жалобы", icon: Coins },
-  { to: "/navigator", label: "Маршрут", icon: Compass },
+  { to: "/pipeline", label: "Конвейер", icon: GitBranch },
+  { to: "/timeline", label: "Лента", icon: CalendarRange },
+  { to: "/trojan", label: "Троян", icon: Swords },
   { to: "/previsit", label: "Визит", icon: Sparkles },
 ];
 

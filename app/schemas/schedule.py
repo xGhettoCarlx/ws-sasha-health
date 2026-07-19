@@ -3,6 +3,13 @@ Schedule schema — visit calendar (расписание.md).
 
 Captures upcoming and past medical visits with date, time, doctor,
 institution, purpose, and status tracking.
+
+Pipeline stages (5-step medical conveyor):
+  1 therapist  — направления
+  2 specialists — спецы в 1 день → назначения на анализы
+  3 labs       — анализы и тесты
+  4 final      — финальный приём с результатами
+  5 cream      — сливки (процедуры, массажи)
 """
 
 from typing import Literal, Optional
@@ -17,6 +24,8 @@ VisitStatus = Literal[
     "completed",    # ✅ Состоялось
     "cancelled",    # ❌ Отменено
 ]
+
+PipelineStage = Literal[1, 2, 3, 4, 5]
 
 
 class VisitItem(CommonBase):
@@ -43,6 +52,29 @@ class VisitItem(CommonBase):
     notes: Optional[str] = Field(
         default=None,
         description="Additional notes / reminders for this visit",
+    )
+    # ── Pipeline / insurance (HEALTH-MEDICAL-PIPELINE-AND-TIMELINE) ──
+    pipeline_stage: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=5,
+        description="1=therapist … 5=cream (procedures)",
+    )
+    specialty: Optional[str] = Field(
+        default=None,
+        description="Specialty bucket, e.g. Кардиология",
+    )
+    visit_date: Optional[str] = Field(
+        default=None,
+        description="Actual appointment date if different from `date` field",
+    )
+    insurance_warned: bool = Field(
+        default=False,
+        description="Whether insurance was notified about this upcoming visit",
+    )
+    pipeline_cycle: Optional[str] = Field(
+        default=None,
+        description="Optional cycle id to group visits in one conveyor run",
     )
 
 

@@ -132,6 +132,105 @@ export interface VisitItem {
   status: VisitStatus;
   notes?: string | null;
   tags?: string[];
+  pipeline_stage?: number | null;
+  specialty?: string | null;
+  visit_date?: string | null;
+  insurance_warned?: boolean;
+  pipeline_cycle?: string | null;
+  effective_date?: string | null;
+  kind?: string;
+  title?: string;
+  source?: string;
+  category?: string;
+}
+
+// ─── Pipeline / Timeline / Trojan ─────────────────────────────────────────
+
+export type PipelineStageStatus = "done" | "active" | "empty";
+
+export interface PipelineStage {
+  stage: number;
+  key: string;
+  title: string;
+  goal: string;
+  icon: string;
+  color: string;
+  visits: VisitItem[];
+  counts: { total: number; completed: number; open: number };
+  status: PipelineStageStatus;
+}
+
+export interface PipelineResponse {
+  stages: PipelineStage[];
+  active_stage: number;
+  total_visits: number;
+  summary: {
+    open: number;
+    completed: number;
+    insurance_warned: number;
+    insurance_pending: number;
+  };
+}
+
+export interface TimelineMonthGroup {
+  month: string;
+  label: string;
+  items: VisitItem[];
+}
+
+export interface TimelineYearGroup {
+  year: string;
+  months: TimelineMonthGroup[];
+}
+
+export interface TimelineResponse {
+  today: string;
+  future: VisitItem[];
+  past: {
+    groups: TimelineYearGroup[];
+    undated: VisitItem[];
+    count: number;
+  };
+  counts: {
+    future: number;
+    past: number;
+    insurance_unwarned_future: number;
+  };
+}
+
+export interface TrojanBooster {
+  id: string;
+  text: string;
+  rationale: string;
+}
+
+export interface TrojanComplaint {
+  id: string;
+  text: string;
+  severity?: number;
+  specialty_hint?: string;
+  date?: string;
+  tags?: string[];
+}
+
+export interface TrojanResponse {
+  specialty: string;
+  specialties: string[];
+  boosters: TrojanBooster[];
+  boosters_by_specialty: Record<string, TrojanBooster[]>;
+  complaints: TrojanComplaint[];
+  selected_complaint_ids: string[];
+  selected_booster_ids: string[];
+  notes: string;
+  updated?: string;
+}
+
+export interface TrojanComposeResponse {
+  specialty: string;
+  script: string;
+  real_count: number;
+  booster_count: number;
+  mix_ok: boolean;
 }
 
 // ─── Analytics / History ─────────────────────────────────────────────────

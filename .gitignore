@@ -25,6 +25,7 @@ data/*.local
 # Logs
 *.log
 app/app.log
+logs/
 
 # OS
 .DS_Store

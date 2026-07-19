@@ -79,14 +79,24 @@ export async function apiFetch<T = unknown>(
   options: RequestInit = {},
 ): Promise<T> {
   const url = `${BASE_URL}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-      ...(options.headers as Record<string, string> | undefined),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+        ...(options.headers as Record<string, string> | undefined),
+      },
+    });
+  } catch (err) {
+    // connection refused / offline — same red banners as HTTP errors
+    const msg =
+      err instanceof TypeError
+        ? `Нет связи с API (${url || path}). Проверьте FastAPI на 127.0.0.1:8000`
+        : String(err);
+    throw new ApiError(0, msg, null);
+  }
   return (await handleResponse(res)) as T;
 }
 

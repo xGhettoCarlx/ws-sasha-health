@@ -5,6 +5,9 @@ import {
   ChevronRight,
   ClipboardList,
   Coins,
+  GitBranch,
+  CalendarRange,
+  Swords,
   Shield,
   Sparkles,
   Stethoscope,
@@ -83,7 +86,10 @@ export function DashboardPage() {
             Не удалось загрузить данные API
           </p>
           <p className="text-[13px] text-[#8E8E93] mt-2">
-            Запустите FastAPI (`uvicorn app.main:app`) и откройте через `/sh/`.
+            Бэкенд 127.0.0.1:8000 недоступен. Проверьте launchd{" "}
+            <code className="text-[12px]">com.sasha-health.backend</code> или{" "}
+            <code className="text-[12px]">scripts/run_backend.sh</code>, затем
+            откройте через <code className="text-[12px]">/sh/</code>.
           </p>
         </GlassCard>
       </div>
@@ -185,8 +191,30 @@ export function DashboardPage() {
         )}
       </GlassCard>
 
-      {/* Hub cards */}
+      {/* Hub cards — pipeline first */}
       <section className="space-y-3">
+        <HubRow
+          to="/pipeline"
+          icon={<GitBranch className="w-4 h-4" />}
+          iconBg="#007AFF"
+          title="Конвейер 5 этапов"
+          detail="Терапевт → спецы → анализы → финал → сливки"
+          badge="new"
+        />
+        <HubRow
+          to="/timeline"
+          icon={<CalendarRange className="w-4 h-4" />}
+          iconBg="#5856D6"
+          title="Таймлайн"
+          detail="Прошлое по месяцам · будущее · страховка"
+        />
+        <HubRow
+          to="/trojan"
+          icon={<Swords className="w-4 h-4" />}
+          iconBg="#AF52DE"
+          title="Троянский конь"
+          detail="Жалобы + усиления → аппрув чекапа"
+        />
         <HubRow
           to="/checkups"
           icon={<ClipboardList className="w-4 h-4" />}
@@ -202,14 +230,14 @@ export function DashboardPage() {
         <HubRow
           to="/complaints"
           icon={<Coins className="w-4 h-4" />}
-          iconBg="#AF52DE"
+          iconBg="#FF2D55"
           title="Копилка жалоб"
           detail={`${data.complaints_open} открытых`}
         />
         <HubRow
           to="/navigator"
           icon={<Stethoscope className="w-4 h-4" />}
-          iconBg="#007AFF"
+          iconBg="#34C759"
           title="Навигатор"
           detail="Симптом → врач → страховка"
         />

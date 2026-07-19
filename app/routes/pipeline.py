@@ -153,6 +153,39 @@ def _effective_date(visit: dict) -> Optional[date]:
     return _parse_date(visit.get("visit_date")) or _parse_date(visit.get("date"))
 
 
+def resolve_visit_status(visit: dict) -> str:
+    """Normalize visit status for pipeline/timeline.
+
+    Rules (HEALTH-PIPELINE-STATUS-SEPARATION):
+      - completed / cancelled stay as-is
+      - has real date (visit_date or date) → booked
+      - no date → draft (agent recommendation / need to book)
+      - legacy planned/pending mapped via date presence
+    """
+    raw = str(visit.get("status") or "").strip().lower()
+    if raw in ("completed", "cancelled"):
+        return raw
+    if _effective_date(visit) is not None:
+        return "booked"
+    return "draft"
+
+
+def apply_status_on_save(meta: dict) -> dict:
+    """When creating/updating a visit: date present → booked, else draft.
+
+    Terminal statuses (completed/cancelled) are preserved.
+    """
+    raw = str(meta.get("status") or "").strip().lower()
+    if raw in ("completed", "cancelled"):
+        meta["status"] = raw
+        return meta
+    meta["status"] = resolve_visit_status(meta)
+    return meta
+
+
+OPEN_STATUSES = frozenset({"draft", "booked", "planned", "pending"})
+
+
 def _infer_stage(visit: dict) -> int:
     """Map visit to pipeline stage 1–5 from explicit field or heuristics."""
     raw = visit.get("pipeline_stage")
@@ -215,6 +248,15 @@ def _normalize_visit(meta: dict) -> dict:
         v["insurance_warned"] = bool(v.get("insurance_warned"))
     eff = _effective_date(v)
     v["effective_date"] = eff.isoformat() if eff else None
+    # draft | booked | completed | cancelled (legacy planned/pending collapsed)
+    v["status"] = resolve_visit_status(v)
+    v["booking_status"] = (
+        "draft"
+        if v["status"] == "draft"
+        else "booked"
+        if v["status"] in ("booked", "completed")
+        else v["status"]
+    )
     return v
 
 
@@ -272,24 +314,33 @@ async def get_pipeline(_user: dict = require_auth):
     active_stage = 1
     for spec in PIPELINE_STAGES:
         stage_n = spec["stage"]
-        items = sorted(
-            by_stage[stage_n],
-            key=lambda x: x.get("effective_date") or x.get("date") or "9999",
-        )
+        items = by_stage[stage_n]
         completed = sum(1 for x in items if x.get("status") == "completed")
-        open_n = sum(1 for x in items if x.get("status") in ("planned", "pending"))
+        open_n = sum(1 for x in items if x.get("status") in OPEN_STATUSES)
+        draft_n = sum(1 for x in items if x.get("status") == "draft")
+        booked_n = sum(1 for x in items if x.get("status") == "booked")
         if open_n > 0 and stage_n >= active_stage:
             active_stage = stage_n
         elif completed > 0 and open_n == 0 and stage_n >= active_stage:
             active_stage = min(5, stage_n + 1)
+        # Sort: booked first (real appointments), then draft (to-book), then rest
+        items_sorted = sorted(
+            items,
+            key=lambda x: (
+                0 if x.get("status") == "booked" else 1 if x.get("status") == "draft" else 2,
+                x.get("effective_date") or x.get("date") or "9999",
+            ),
+        )
         stages_out.append(
             {
                 **spec,
-                "visits": items,
+                "visits": items_sorted,
                 "counts": {
                     "total": len(items),
                     "completed": completed,
                     "open": open_n,
+                    "draft": draft_n,
+                    "booked": booked_n,
                 },
                 "status": (
                     "done"
@@ -311,13 +362,15 @@ async def get_pipeline(_user: dict = require_auth):
         "active_stage": active_stage,
         "total_visits": len(visits),
         "summary": {
-            "open": sum(1 for v in visits if v.get("status") in ("planned", "pending")),
+            "open": sum(1 for v in visits if v.get("status") in OPEN_STATUSES),
+            "draft": sum(1 for v in visits if v.get("status") == "draft"),
+            "booked": sum(1 for v in visits if v.get("status") == "booked"),
             "completed": sum(1 for v in visits if v.get("status") == "completed"),
             "insurance_warned": sum(1 for v in visits if v.get("insurance_warned")),
             "insurance_pending": sum(
                 1
                 for v in visits
-                if v.get("status") in ("planned", "pending") and not v.get("insurance_warned")
+                if v.get("status") in OPEN_STATUSES and not v.get("insurance_warned")
             ),
         },
     }
@@ -603,21 +656,27 @@ async def trigger_visit_prompt(
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"visit not found: {visit_id}") from None
 
-    # Only future / open visits (date >= today or no date with planned/pending)
+    # Prompt for booked future visits (date >= today). Drafts need booking first.
     today = date.today()
+    status = resolve_visit_status(visit)
     eff = _effective_date(visit)
-    status = str(visit.get("status") or "")
     is_future = False
-    if eff and eff >= today and status != "cancelled":
-        is_future = True
-    elif not eff and status in ("planned", "pending", ""):
-        is_future = True
-    if status == "completed":
+    if status == "completed" or status == "cancelled":
         is_future = False
+    elif status == "booked" and eff and eff >= today:
+        is_future = True
+    elif status == "booked" and not eff:
+        is_future = True  # rare: booked without parseable date
+    # draft → no prompt until operator books a date
     if not is_future:
         raise HTTPException(
             status_code=400,
-            detail="prompt only for future/planned visits",
+            detail=(
+                "prompt only for booked future visits "
+                "(draft = need to book first)"
+                if status == "draft"
+                else "prompt only for booked future visits"
+            ),
         )
 
     md = build_visit_prompt_markdown(visit, store=store)

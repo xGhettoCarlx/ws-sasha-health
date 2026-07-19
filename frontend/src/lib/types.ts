@@ -102,10 +102,20 @@ export interface Medication {
 
 // ─── Visits (History) ─────────────────────────────────────────────────────
 
-export type VisitStatus = "planned" | "pending" | "completed" | "cancelled";
+/** Lifecycle + booking: draft/booked for open visits; planned/pending are legacy aliases */
+export type VisitStatus =
+  | "draft"
+  | "booked"
+  | "planned"
+  | "pending"
+  | "completed"
+  | "cancelled";
+
+/** Pipeline booking layer: recommendation vs real appointment */
+export type BookingStatus = "draft" | "booked";
 
 export interface VisitRecord {
-  date: string;
+  date?: string | null;
   time?: string | null;
   doctor: string;
   institution?: string | null;
@@ -129,12 +139,14 @@ export interface UpcomingVisitsResponse {
 
 export interface VisitItem {
   id?: string;
-  date: string;
+  date?: string | null;
   time?: string | null;
   doctor: string;
   institution?: string | null;
   purpose: string;
   status: VisitStatus;
+  /** draft = need to book; booked = real appointment (normalized by API) */
+  booking_status?: BookingStatus | string;
   notes?: string | null;
   tags?: string[];
   pipeline_stage?: number | null;
@@ -161,7 +173,13 @@ export interface PipelineStage {
   icon: string;
   color: string;
   visits: VisitItem[];
-  counts: { total: number; completed: number; open: number };
+  counts: {
+    total: number;
+    completed: number;
+    open: number;
+    draft?: number;
+    booked?: number;
+  };
   status: PipelineStageStatus;
 }
 
@@ -171,6 +189,8 @@ export interface PipelineResponse {
   total_visits: number;
   summary: {
     open: number;
+    draft?: number;
+    booked?: number;
     completed: number;
     insurance_warned: number;
     insurance_pending: number;

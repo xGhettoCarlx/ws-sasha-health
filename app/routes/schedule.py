@@ -24,6 +24,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.auth import require_auth
 from app.hermes_notify import notify_hermes
+from app.routes.pipeline import apply_status_on_save, resolve_visit_status
 from app.schemas.schedule import VisitItem
 from app.storage import MDStorage
 
@@ -61,6 +62,15 @@ def _visit_from_meta(meta: dict, body: str = "") -> dict:
     result = {k: v for k, v in meta.items() if not k.startswith("_")}
     if body:
         result["content"] = body
+    # Normalize draft | booked (date present → booked, else draft)
+    result["status"] = resolve_visit_status(result)
+    result["booking_status"] = (
+        "draft"
+        if result["status"] == "draft"
+        else "booked"
+        if result["status"] in ("booked", "completed")
+        else result["status"]
+    )
     return result
 
 
@@ -123,11 +133,14 @@ async def create_visit(visit: VisitItem, _user: dict = require_auth):
     """Create a new visit.
 
     If the visit has no ``id``, a UUID is generated automatically.
+    Status: date present → booked, recommendation without date → draft
+    (completed/cancelled preserved if set).
     """
     store = _get_store()
     visit_id = visit.id or str(uuid.uuid4())
     meta, body = _split_visit(visit)
     meta["id"] = visit_id
+    apply_status_on_save(meta)
     store.write(_visit_path(visit_id), meta, body)
     notify_hermes("POST", {"endpoint": "/api/schedule", "visit_id": visit_id,
                            "purpose": visit.purpose or ""})
@@ -141,6 +154,7 @@ async def update_visit(visit_id: str, visit: VisitItem, _user: dict = require_au
     _read_visit(store, visit_id)  # 404 if missing
     meta, body = _split_visit(visit)
     meta["id"] = visit_id
+    apply_status_on_save(meta)
     store.write(_visit_path(visit_id), meta, body)
     notify_hermes("PUT", {"endpoint": f"/api/schedule/{visit_id}", "visit_id": visit_id})
     return _read_visit(store, visit_id)

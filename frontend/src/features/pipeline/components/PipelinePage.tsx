@@ -10,6 +10,8 @@ import {
   FileText,
   ShieldAlert,
   ShieldCheck,
+  CalendarCheck2,
+  CalendarPlus,
 } from "lucide-react";
 import { GlassCard, PageHeader, SectionHeader, StatusPill } from "../../../components/apple";
 import {
@@ -35,9 +37,21 @@ type PromptFeedback = {
   error?: string;
 };
 
-function isActionableVisit(item: VisitItem): boolean {
-  if (item.status === "completed" || item.status === "cancelled") return false;
-  return true;
+/** draft = recommendation (need to book); booked = real appointment */
+function isDraft(visit: VisitItem): boolean {
+  if (visit.status === "draft") return true;
+  if (visit.booking_status === "draft") return true;
+  if (visit.status === "booked" || visit.status === "completed" || visit.status === "cancelled") {
+    return false;
+  }
+  // legacy planned/pending without date → treat as draft
+  const d = visit.effective_date || visit.visit_date || visit.date;
+  return !d;
+}
+
+function isBookedOpen(visit: VisitItem): boolean {
+  if (visit.status === "completed" || visit.status === "cancelled") return false;
+  return !isDraft(visit);
 }
 
 export default function PipelinePage() {
@@ -87,8 +101,9 @@ export default function PipelinePage() {
     <div className="page-shell section-gap">
       <PageHeader subtitle="5 этапов" title="Конвейер" />
       <p className="text-[13px] text-[#8E8E93] -mt-2 leading-relaxed">
-        Терапевт → спецы (1 день) → анализы → финальный разбор → сливки.
-        Промпт и страховка — на карточках визитов.
+        Терапевт → спецы → анализы → разбор → сливки.{" "}
+        <span className="text-[#007AFF] font-medium">Записано</span> vs{" "}
+        <span className="text-[#8E8E93] font-medium">нужно записаться</span>.
       </p>
 
       {isLoading && (
@@ -121,8 +136,9 @@ export default function PipelinePage() {
               ))}
             </div>
             <p className="text-[12px] text-[#8E8E93] mt-3 text-center">
-              Активный этап {data.active_stage} · открыто {data.summary.open} ·
-              страховка ⚠ {data.summary.insurance_pending}
+              Этап {data.active_stage} · записано {data.summary.booked ?? "—"} ·
+              записать {data.summary.draft ?? "—"} · ⚠ страх.{" "}
+              {data.summary.insurance_pending}
             </p>
           </GlassCard>
 
@@ -190,6 +206,12 @@ function StageCard({
   onToggleInsurance: (id: string, next: boolean) => void;
 }) {
   const Icon = ICONS[stage.icon] || Stethoscope;
+  const booked = stage.visits.filter(isBookedOpen);
+  const drafts = stage.visits.filter(isDraft);
+  const done = stage.visits.filter(
+    (v) => v.status === "completed" || v.status === "cancelled",
+  );
+
   return (
     <GlassCard
       padding="md"
@@ -226,46 +248,99 @@ function StageCard({
           </div>
           <p className="text-[13px] text-[#8E8E93] mt-0.5">{stage.goal}</p>
           <p className="caption mt-1">
-            {stage.counts.completed}/{stage.counts.total} · открыто {stage.counts.open}
+            {stage.counts.completed}/{stage.counts.total}
+            {typeof stage.counts.booked === "number" && (
+              <> · записано {stage.counts.booked}</>
+            )}
+            {typeof stage.counts.draft === "number" && stage.counts.draft > 0 && (
+              <> · записать {stage.counts.draft}</>
+            )}
           </p>
         </div>
       </div>
 
       {stage.visits.length > 0 && (
-        <div className="mt-3 space-y-2 border-t border-black/5 pt-3">
-          <SectionHeader
-            title="Визиты"
-            action={<span className="caption">{stage.visits.length}</span>}
-          />
-          {stage.visits.map((v) => (
-            <VisitRow
-              key={v.id || `${v.doctor}-${v.date}`}
-              visit={v}
-              busy={
-                warnPending ||
-                (!!v.id && promptBusyId === v.id)
-              }
-              feedback={
-                v.id && promptFb?.visitId === v.id ? promptFb : null
-              }
-              onNeedPrompt={onNeedPrompt}
-              onToggleInsurance={onToggleInsurance}
-            />
-          ))}
+        <div className="mt-3 space-y-3 border-t border-black/5 pt-3">
+          {booked.length > 0 && (
+            <div className="space-y-2">
+              <SectionHeader
+                title="Записано"
+                action={
+                  <span className="caption inline-flex items-center gap-1 text-[#007AFF]">
+                    <CalendarCheck2 className="w-3.5 h-3.5" />
+                    {booked.length}
+                  </span>
+                }
+              />
+              {booked.map((v) => (
+                <BookedVisitCard
+                  key={v.id || `${v.doctor}-${v.date}`}
+                  visit={v}
+                  accent={stage.color}
+                  busy={
+                    warnPending || (!!v.id && promptBusyId === v.id)
+                  }
+                  feedback={
+                    v.id && promptFb?.visitId === v.id ? promptFb : null
+                  }
+                  onNeedPrompt={onNeedPrompt}
+                  onToggleInsurance={onToggleInsurance}
+                />
+              ))}
+            </div>
+          )}
+
+          {drafts.length > 0 && (
+            <div className="space-y-2">
+              <SectionHeader
+                title="Нужно записаться"
+                action={
+                  <span className="caption inline-flex items-center gap-1 text-[#8E8E93]">
+                    <CalendarPlus className="w-3.5 h-3.5" />
+                    {drafts.length}
+                  </span>
+                }
+              />
+              {drafts.map((v) => (
+                <DraftVisitCard
+                  key={v.id || `${v.doctor}-draft`}
+                  visit={v}
+                />
+              ))}
+            </div>
+          )}
+
+          {done.length > 0 && (
+            <div className="space-y-2">
+              <SectionHeader
+                title="Готово"
+                action={<span className="caption">{done.length}</span>}
+              />
+              {done.map((v) => (
+                <DoneVisitCard
+                  key={v.id || `${v.doctor}-done`}
+                  visit={v}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </GlassCard>
   );
 }
 
-function VisitRow({
+/** Bright card: real booking with date/time + prompt */
+function BookedVisitCard({
   visit,
+  accent,
   busy,
   feedback,
   onNeedPrompt,
   onToggleInsurance,
 }: {
   visit: VisitItem;
+  accent: string;
   busy: boolean;
   feedback?: PromptFeedback | null;
   onNeedPrompt: (id: string) => void;
@@ -273,53 +348,52 @@ function VisitRow({
 }) {
   const warned = !!visit.insurance_warned;
   const id = visit.id;
-  const showActions = !!id && isActionableVisit(visit);
 
   return (
-    <div className="rounded-2xl bg-black/[0.03] px-3 py-2.5">
+    <div
+      className="rounded-2xl px-3 py-2.5 border border-[#007AFF]/25 bg-gradient-to-br from-[#007AFF]/[0.08] to-white"
+      style={{ boxShadow: `0 0 0 1px ${accent}22` }}
+    >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[14px] font-semibold truncate">
-            {visit.doctor || visit.title}
-          </p>
-          <p className="text-[12px] text-[#8E8E93] mt-0.5">
-            {visit.effective_date || visit.visit_date || visit.date}
-            {visit.time ? ` · ${visit.time}` : ""}
-            {visit.institution ? ` · ${visit.institution}` : ""}
-          </p>
-          {visit.purpose && (
-            <p className="text-[12px] text-[#1C1C1E]/80 mt-1 line-clamp-2">
-              {visit.purpose}
+        <div className="min-w-0 flex items-start gap-2">
+          <div className="w-8 h-8 rounded-xl bg-[#007AFF]/15 flex items-center justify-center shrink-0 mt-0.5">
+            <CalendarCheck2 className="w-4 h-4 text-[#007AFF]" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold leading-snug">
+              {visit.doctor || visit.title}
             </p>
-          )}
+            <p className="text-[13px] text-[#007AFF] font-medium mt-0.5 tabular-nums">
+              {visit.effective_date || visit.visit_date || visit.date || "—"}
+              {visit.time ? ` · ${visit.time}` : ""}
+            </p>
+            {visit.institution && (
+              <p className="text-[12px] text-[#8E8E93] mt-0.5">
+                {visit.institution}
+              </p>
+            )}
+            {visit.purpose && (
+              <p className="text-[12px] text-[#1C1C1E]/80 mt-1 line-clamp-2">
+                {visit.purpose}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <StatusPill
-            tone={
-              visit.status === "completed"
-                ? "ok"
-                : visit.status === "cancelled"
-                  ? "danger"
-                  : "warn"
-            }
+          <StatusPill tone="info">записан</StatusPill>
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 text-[10px] font-medium",
+              warned ? "text-[#34C759]" : "text-[#FF9500]",
+            )}
           >
-            {visit.status}
-          </StatusPill>
-          {visit.status !== "completed" && (
-            <span
-              className={cn(
-                "inline-flex items-center gap-0.5 text-[10px] font-medium",
-                warned ? "text-[#34C759]" : "text-[#FF9500]",
-              )}
-            >
-              <ShieldAlert className="w-3 h-3" />
-              {warned ? "страховка ✓" : "не предупреждена"}
-            </span>
-          )}
+            <ShieldAlert className="w-3 h-3" />
+            {warned ? "страх. ✓" : "страх. ⚠"}
+          </span>
         </div>
       </div>
 
-      {showActions && (
+      {id && (
         <div className="mt-2.5 space-y-2">
           <button
             type="button"
@@ -367,6 +441,56 @@ function VisitRow({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Grey task card: agent recommendation, need to book */
+function DraftVisitCard({ visit }: { visit: VisitItem }) {
+  const who = visit.doctor || visit.specialty || visit.title || "врачу";
+  return (
+    <div className="rounded-2xl px-3 py-2.5 bg-[#8E8E93]/[0.08] border border-dashed border-[#C7C7CC]">
+      <div className="flex items-start gap-2">
+        <div className="w-8 h-8 rounded-xl bg-black/5 flex items-center justify-center shrink-0 mt-0.5">
+          <CalendarPlus className="w-4 h-4 text-[#8E8E93]" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[14px] font-medium text-[#636366] leading-snug">
+            Нужно записаться к {who}
+          </p>
+          {visit.purpose && (
+            <p className="text-[12px] text-[#8E8E93] mt-1 line-clamp-2">
+              {visit.purpose}
+            </p>
+          )}
+          {visit.notes && (
+            <p className="text-[11px] text-[#AEAEB2] mt-1 line-clamp-2">
+              {visit.notes}
+            </p>
+          )}
+        </div>
+        <StatusPill tone="neutral">записать</StatusPill>
+      </div>
+    </div>
+  );
+}
+
+function DoneVisitCard({ visit }: { visit: VisitItem }) {
+  return (
+    <div className="rounded-2xl px-3 py-2 bg-black/[0.03] opacity-80">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium truncate">
+            {visit.doctor || visit.title}
+          </p>
+          <p className="text-[11px] text-[#8E8E93]">
+            {visit.effective_date || visit.date || "—"}
+          </p>
+        </div>
+        <StatusPill tone={visit.status === "completed" ? "ok" : "danger"}>
+          {visit.status === "completed" ? "готово" : "отмена"}
+        </StatusPill>
+      </div>
     </div>
   );
 }

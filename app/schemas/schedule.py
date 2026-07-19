@@ -19,18 +19,28 @@ from pydantic import Field
 from .common import CommonBase
 
 VisitStatus = Literal[
-    "planned",       # 📅 Запланировано
-    "pending",      # 🔜 После страховки / ожидание
+    "draft",        # 📝 Рекомендация врача — нужно записаться (нет даты)
+    "booked",       # 📅 Оператор реально записан (есть дата/время)
+    "planned",      # legacy → normalize to booked if date else draft
+    "pending",      # legacy → same
     "completed",    # ✅ Состоялось
     "cancelled",    # ❌ Отменено
 ]
+
+# Open (not done) booking lifecycle used by pipeline UI
+BookingStatus = Literal["draft", "booked"]
 
 PipelineStage = Literal[1, 2, 3, 4, 5]
 
 
 class VisitItem(CommonBase):
-    """A single medical appointment."""
+    """A single medical appointment or agent recommendation."""
 
+    # Override CommonBase: draft recommendations may have no appointment date yet
+    date: Optional[str] = Field(
+        default=None,
+        description="ISO date of record / appointment; empty for draft recommendations",
+    )
     time: Optional[str] = Field(
         default=None,
         description="Appointment time (HH:MM or free-text like '—')",
@@ -46,8 +56,11 @@ class VisitItem(CommonBase):
         description="Reason for the visit",
     )
     status: VisitStatus = Field(
-        default="planned",
-        description="Current visit status",
+        default="draft",
+        description=(
+            "draft = recommendation (need to book); booked = real appointment; "
+            "completed/cancelled terminal. Legacy planned/pending accepted."
+        ),
     )
     notes: Optional[str] = Field(
         default=None,

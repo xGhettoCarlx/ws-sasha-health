@@ -1,0 +1,243 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./design-tokens.css";
+
+/* ─── Tailwind v4 theme: Apple HIG ─── */
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-heading: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --color-background: #f2f2f7;
+  --color-foreground: #1c1c1e;
+  --color-card: #ffffff;
+  --color-card-foreground: #1c1c1e;
+  --color-popover: rgba(255, 255, 255, 0.92);
+  --color-popover-foreground: #1c1c1e;
+  --color-primary: #007aff;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #e5e5ea;
+  --color-secondary-foreground: #1c1c1e;
+  --color-muted: #f2f2f7;
+  --color-muted-foreground: #8e8e93;
+  --color-accent: #007aff;
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #ff3b30;
+  --color-border: rgba(60, 60, 67, 0.12);
+  --color-input: rgba(60, 60, 67, 0.12);
+  --color-ring: #007aff;
+
+  --color-apple-blue: #007aff;
+  --color-apple-green: #34c759;
+  --color-apple-orange: #ff9500;
+  --color-apple-red: #ff3b30;
+  --color-apple-pink: #ff2d55;
+  --color-apple-purple: #af52de;
+  --color-apple-teal: #5ac8fa;
+  --color-apple-indigo: #5856d6;
+  --color-apple-mint: #00c7be;
+  --color-apple-yellow: #ffcc00;
+  --color-apple-gray: #8e8e93;
+  --color-apple-gray2: #aeaeb2;
+  --color-apple-gray3: #c7c7cc;
+  --color-apple-gray4: #d1d1d6;
+  --color-apple-gray5: #e5e5ea;
+  --color-apple-gray6: #f2f2f7;
+
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-2xl: 28px;
+}
+
+/* ─── Base ─── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  padding-top: env(safe-area-inset-top, 0px);
+  -webkit-tap-highlight-color: transparent;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-feature-settings: "ss01" on, "ss02" on;
+  background:
+    radial-gradient(120% 80% at 10% -10%, rgba(0, 122, 255, 0.08), transparent 50%),
+    radial-gradient(100% 60% at 100% 0%, rgba(255, 45, 85, 0.06), transparent 45%),
+    radial-gradient(80% 50% at 50% 100%, rgba(52, 199, 89, 0.05), transparent 50%),
+    #f2f2f7;
+  color: #1c1c1e;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+/* Soft selection */
+::selection {
+  background: rgba(0, 122, 255, 0.18);
+  color: #1c1c1e;
+}
+
+/* Scrollbars — hidden on mobile chrome, thin on desktop */
+.scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Glass utilities ─── */
+.glass {
+  background: var(--apple-glass);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 0.5px solid var(--apple-glass-border);
+  box-shadow: var(--shadow-soft);
+}
+
+.glass-thick {
+  background: var(--apple-glass-thick);
+  backdrop-filter: saturate(180%) blur(28px);
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+  border: 0.5px solid var(--apple-glass-border);
+  box-shadow: var(--shadow-card);
+}
+
+.glass-nav {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: saturate(200%) blur(24px);
+  -webkit-backdrop-filter: saturate(200%) blur(24px);
+  border-top: 0.5px solid rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-nav);
+}
+
+/* Airy page shell */
+.page-shell {
+  padding: var(--space-page-y) var(--space-page-x);
+  padding-bottom: calc(var(--nav-height) + var(--safe-area-inset-bottom) + 12px);
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.section-gap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-section);
+}
+
+/* Large title — iOS style */
+.large-title {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+  color: var(--apple-label);
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--apple-label);
+}
+
+.caption {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--apple-label-secondary);
+  letter-spacing: -0.08px;
+}
+
+.footnote {
+  font-size: 12px;
+  color: var(--apple-label-tertiary);
+}
+
+/* Metric number — SF-style tabular */
+.metric-value {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.5px;
+  font-weight: 600;
+}
+
+/* Hairline dividers */
+.hairline {
+  height: 0.5px;
+  background: var(--apple-separator);
+  width: 100%;
+}
+
+/* Press feedback */
+.pressable {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.pressable:active {
+  transform: scale(0.97);
+  opacity: 0.92;
+}
+
+/* Soft focus ring */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.25);
+}
+
+/* Chart bar animation */
+@keyframes bar-grow {
+  from {
+    transform: scaleY(0);
+    opacity: 0.4;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+.chart-bar {
+  transform-origin: bottom;
+  animation: bar-grow 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Ring progress */
+@keyframes ring-draw {
+  from {
+    stroke-dashoffset: var(--ring-circ);
+  }
+}
+
+/* Dark mode: keep light Apple Health look in TMA for consistency
+   (operator requested white/translucent HIG). Soften only if TG forces dark. */
+html.dark body {
+  /* Still airy light medical UI — invert only if needed later */
+  color-scheme: light;
+}

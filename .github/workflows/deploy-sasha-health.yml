@@ -1,0 +1,348 @@
+# =============================================================================
+# Sasha Health — CI/CD (React 19 SPA + FastAPI)
+# Repo layouts supported:
+#   1) App root = repository root  (ws-sasha-health)  ← default
+#   2) Monorepo: set repository Variable SASHA_HEALTH_ROOT
+#        e.g. apps/sasha-health  or  Projects/Project5
+#
+# SEC-BWS: no hosts, users, keys, or absolute server paths in this file.
+#          All deploy targets come from GitHub Secrets / Variables.
+# =============================================================================
+name: Deploy Sasha Health
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "frontend/**"
+      - "app/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "supervisord.conf"
+      - "deploy.sh"
+      - ".github/workflows/deploy-sasha-health.yml"
+      - "apps/sasha-health/**"
+      - "Projects/Project5/**"
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: "Skip Python pytest"
+        type: boolean
+        default: false
+      skip_frontend_deploy:
+        description: "Skip SPA rsync to DO_SPA_REMOTE_PATH"
+        type: boolean
+        default: false
+      skip_backend_deploy:
+        description: "Skip backend rsync to DO_API_REMOTE_PATH"
+        type: boolean
+        default: false
+      run_post_deploy:
+        description: "Run DO_POST_DEPLOY_CMD over SSH after copy"
+        type: boolean
+        default: true
+
+concurrency:
+  group: deploy-sasha-health-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  PYTHON_VERSION: "3.12"
+  VITE_DEMO_MODE: "false"
+
+jobs:
+  resolve:
+    name: Resolve app path
+    runs-on: ubuntu-latest
+    outputs:
+      app_dir: ${{ steps.root.outputs.dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: root
+        shell: bash
+        run: |
+          set -euo pipefail
+          CANDIDATES=(
+            "${{ vars.SASHA_HEALTH_ROOT }}"
+            "."
+            "apps/sasha-health"
+            "Projects/Project5"
+          )
+          RESOLVED=""
+          for d in "${CANDIDATES[@]}"; do
+            [ -z "${d}" ] && continue
+            if [ -f "${d}/frontend/package.json" ] && [ -f "${d}/pyproject.toml" ]; then
+              RESOLVED="${d}"
+              break
+            fi
+          done
+          if [ -z "${RESOLVED}" ]; then
+            echo "::error::Cannot find sasha-health (frontend/package.json + pyproject.toml). Set vars.SASHA_HEALTH_ROOT"
+            exit 1
+          fi
+          echo "dir=${RESOLVED}" >> "${GITHUB_OUTPUT}"
+          echo "Using APP_DIR=${RESOLVED}"
+
+  test-backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    needs: resolve
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_tests != true }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: ${{ needs.resolve.outputs.app_dir }}/pyproject.toml
+
+      - name: Install package + dev deps
+        working-directory: ${{ needs.resolve.outputs.app_dir }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run pytest
+        working-directory: ${{ needs.resolve.outputs.app_dir }}
+        env:
+          BOT_TOKEN: "ci-dummy-token-not-for-production"
+        run: pytest -q --tb=short
+
+  build-frontend:
+    name: Build React SPA
+    runs-on: ubuntu-latest
+    needs: resolve
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ needs.resolve.outputs.app_dir }}/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ${{ needs.resolve.outputs.app_dir }}/frontend
+        run: npm ci
+
+      - name: Build SPA (Vite → dist/)
+        working-directory: ${{ needs.resolve.outputs.app_dir }}/frontend
+        env:
+          VITE_DEMO_MODE: ${{ env.VITE_DEMO_MODE }}
+          VITE_API_BASE: ${{ vars.VITE_API_BASE || '' }}
+          VITE_BOT_USERNAME: ${{ vars.VITE_BOT_USERNAME || '' }}
+        run: npm run build
+
+      - name: Inject version.json (cache bust)
+        id: meta
+        working-directory: ${{ needs.resolve.outputs.app_dir }}/frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          BUILD_TIME="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          COMMIT="${GITHUB_SHA::7}"
+          cat > dist/version.json <<EOF
+          {
+            "version": "${VERSION}",
+            "buildTime": "${BUILD_TIME}",
+            "commit": "${COMMIT}",
+            "source": "github-actions"
+          }
+          EOF
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Wrote dist/version.json → ${VERSION} (${COMMIT})"
+
+      - name: Upload SPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sasha-health-spa
+          path: ${{ needs.resolve.outputs.app_dir }}/frontend/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Pack backend payload
+        working-directory: ${{ needs.resolve.outputs.app_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sasha-health-backend
+          rsync -a \
+            --exclude '__pycache__' \
+            --exclude '*.pyc' \
+            --exclude '.venv' \
+            --exclude 'data/' \
+            --exclude '.env' \
+            --exclude '.env.*' \
+            app/ /tmp/sasha-health-backend/app/
+          for f in pyproject.toml Dockerfile docker-compose.yml supervisord.conf; do
+            [ -f "${f}" ] && cp "${f}" /tmp/sasha-health-backend/
+          done
+          [ -d scripts ] && rsync -a scripts/ /tmp/sasha-health-backend/scripts/
+          tar -C /tmp/sasha-health-backend -czf /tmp/sasha-health-backend.tar.gz .
+          ls -lh /tmp/sasha-health-backend.tar.gz
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sasha-health-backend
+          path: /tmp/sasha-health-backend.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy to DO
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - build-frontend
+      - test-backend
+    if: |
+      always() &&
+      needs.resolve.result == 'success' &&
+      needs.build-frontend.result == 'success' &&
+      (needs.test-backend.result == 'success' || needs.test-backend.result == 'skipped')
+    steps:
+      - name: Download SPA artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sasha-health-spa
+          path: spa-dist
+
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sasha-health-backend
+          path: backend-pack
+
+      - name: Validate required secrets
+        shell: bash
+        env:
+          DO_HOST: ${{ secrets.DO_HOST }}
+          DO_SSH_USER: ${{ secrets.DO_SSH_USER }}
+          DO_SSH_KEY: ${{ secrets.DO_SSH_KEY }}
+          DO_SPA_REMOTE_PATH: ${{ secrets.DO_SPA_REMOTE_PATH }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in DO_HOST DO_SSH_USER DO_SSH_KEY DO_SPA_REMOTE_PATH; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required secret: ${name}"
+              missing=1
+            fi
+          done
+          if [ "${missing}" -ne 0 ]; then
+            echo "See docs/GITHUB_ACTIONS_SECRETS_CHECKLIST.md"
+            exit 1
+          fi
+          echo "Required secrets present (values not printed)."
+
+      - name: Install SSH key
+        shell: bash
+        env:
+          DO_SSH_KEY: ${{ secrets.DO_SSH_KEY }}
+          DO_SSH_KNOWN_HOSTS: ${{ secrets.DO_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${DO_SSH_KEY}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${DO_SSH_KNOWN_HOSTS}" ]; then
+            printf '%s\n' "${DO_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+            chmod 644 ~/.ssh/known_hosts
+          else
+            printf 'Host *\n  StrictHostKeyChecking accept-new\n' > ~/.ssh/config
+            chmod 600 ~/.ssh/config
+          fi
+
+      - name: Deploy SPA (rsync dist → DO_SPA_REMOTE_PATH)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_frontend_deploy != true }}
+        shell: bash
+        env:
+          DO_HOST: ${{ secrets.DO_HOST }}
+          DO_SSH_USER: ${{ secrets.DO_SSH_USER }}
+          DO_SSH_PORT: ${{ secrets.DO_SSH_PORT }}
+          DO_SPA_REMOTE_PATH: ${{ secrets.DO_SPA_REMOTE_PATH }}
+        run: |
+          set -euo pipefail
+          PORT="${DO_SSH_PORT:-22}"
+          RSYNC_RSH="ssh -i ${HOME}/.ssh/id_deploy -p ${PORT} -o IdentitiesOnly=yes"
+          echo "Syncing SPA to remote DO_SPA_REMOTE_PATH (host/user redacted from logs by using env only)"
+          rsync -az --delete \
+            -e "${RSYNC_RSH}" \
+            spa-dist/ \
+            "${DO_SSH_USER}@${DO_HOST}:${DO_SPA_REMOTE_PATH}"
+          echo "SPA deploy complete."
+
+      - name: Deploy backend (rsync → DO_API_REMOTE_PATH)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_backend_deploy != true }}
+        shell: bash
+        env:
+          DO_HOST: ${{ secrets.DO_HOST }}
+          DO_SSH_USER: ${{ secrets.DO_SSH_USER }}
+          DO_SSH_PORT: ${{ secrets.DO_SSH_PORT }}
+          DO_API_REMOTE_PATH: ${{ secrets.DO_API_REMOTE_PATH }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DO_API_REMOTE_PATH}" ]; then
+            echo "DO_API_REMOTE_PATH not set — skipping backend deploy (SPA-only mode)."
+            exit 0
+          fi
+          PORT="${DO_SSH_PORT:-22}"
+          RSYNC_RSH="ssh -i ${HOME}/.ssh/id_deploy -p ${PORT} -o IdentitiesOnly=yes"
+          mkdir -p backend-unpacked
+          tar -xzf backend-pack/sasha-health-backend.tar.gz -C backend-unpacked
+          rsync -az --delete \
+            --exclude 'data/' \
+            --exclude '.env' \
+            --exclude '.venv/' \
+            -e "${RSYNC_RSH}" \
+            backend-unpacked/ \
+            "${DO_SSH_USER}@${DO_HOST}:${DO_API_REMOTE_PATH}"
+          echo "Backend deploy complete."
+
+      - name: Post-deploy remote command
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_post_deploy != false }}
+        shell: bash
+        env:
+          DO_HOST: ${{ secrets.DO_HOST }}
+          DO_SSH_USER: ${{ secrets.DO_SSH_USER }}
+          DO_SSH_PORT: ${{ secrets.DO_SSH_PORT }}
+          DO_POST_DEPLOY_CMD: ${{ secrets.DO_POST_DEPLOY_CMD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DO_POST_DEPLOY_CMD}" ]; then
+            echo "DO_POST_DEPLOY_CMD not set — skipping remote restart."
+            exit 0
+          fi
+          PORT="${DO_SSH_PORT:-22}"
+          ssh -i "${HOME}/.ssh/id_deploy" -p "${PORT}" -o IdentitiesOnly=yes \
+            "${DO_SSH_USER}@${DO_HOST}" \
+            "bash -lc $(printf '%q' "${DO_POST_DEPLOY_CMD}")"
+          echo "Post-deploy command finished."
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Sasha Health deploy"
+            echo ""
+            echo "- SPA artifact: built + rsynced (if secrets configured)"
+            echo "- Version: \`${{ needs.build-frontend.outputs.version }}\`"
+            echo "- Commit: \`${GITHUB_SHA::7}\`"
+            echo "- Auth: DO_* secrets only (no hardcoded hosts/keys)"
+          } >> "${GITHUB_STEP_SUMMARY}"

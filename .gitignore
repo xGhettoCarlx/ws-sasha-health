@@ -1,0 +1,49 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.tsbuildinfo
+
+# Runtime data (local medical data must not be published)
+data/
+data/*.local
+*.local
+
+# Logs
+*.log
+app/app.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / tooling
+.vscode/
+.idea/
+*.swp
+*.swo
+.codegraph
+.omo/
+.playwright-mcp/
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/node_modules/
+
+# Virtual environment
+.venv/
+venv/

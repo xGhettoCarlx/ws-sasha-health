@@ -1,0 +1,27 @@
+name: Deploy Sasha Health Frontend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Projects/Project5/frontend/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          source: "Projects/Project5/frontend/*"
+          target: "/var/www/sasha-health"
+          strip_components: 3

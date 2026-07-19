@@ -31,21 +31,54 @@ function getInitData(): string {
   return stored ?? "";
 }
 
-function authHeaders(): Record<string, string> {
-  const initData = getInitData();
-  if (initData) return { Authorization: `tma ${initData}` };
+function getTelegramUserId(): string {
+  if (typeof window === "undefined") return "";
+  const tg = (window as any).Telegram?.WebApp;
+  const id = tg?.initDataUnsafe?.user?.id;
+  if (id != null && id !== "") return String(id);
+
+  const stored = sessionStorage.getItem("tg_user_id");
+  if (stored) return stored;
 
   const webAuthRaw = sessionStorage.getItem("web_auth");
   if (webAuthRaw) {
     try {
       const webAuth = JSON.parse(webAuthRaw);
-      if (webAuth?.user_id) return { "X-User-ID": String(webAuth.user_id) };
+      if (webAuth?.user_id) return String(webAuth.user_id);
     } catch {
-      /* corrupt storage */
+      /* ignore */
+    }
+  }
+  return "";
+}
+
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const initData = getInitData();
+  if (initData) {
+    headers.Authorization = `tma ${initData}`;
+  }
+
+  // Multi-tenant: always pass telegram id when known (backend prefers verified initData)
+  const userId = getTelegramUserId();
+  if (userId) {
+    headers["X-User-ID"] = userId;
+    headers["X-Telegram-User-Id"] = userId;
+  } else if (!initData) {
+    const webAuthRaw = sessionStorage.getItem("web_auth");
+    if (webAuthRaw) {
+      try {
+        const webAuth = JSON.parse(webAuthRaw);
+        if (webAuth?.user_id) {
+          headers["X-User-ID"] = String(webAuth.user_id);
+        }
+      } catch {
+        /* corrupt storage */
+      }
     }
   }
 
-  return {};
+  return headers;
 }
 
 async function handleResponse(res: Response): Promise<unknown> {

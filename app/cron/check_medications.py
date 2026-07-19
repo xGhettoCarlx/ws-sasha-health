@@ -46,7 +46,10 @@ RX_THRESHOLD_DAYS = 30
 
 
 def _state_path() -> Path:
-    return Path(get_settings().DATA_DIR) / "cron_state.json"
+    """Per-tenant cron state under data/users/<id>/cron_state.json."""
+    from app.storage import MDStorage
+
+    return MDStorage().base_dir / "cron_state.json"
 
 
 def _load_state() -> dict[str, Any]:
@@ -157,37 +160,54 @@ async def run() -> None:
         logger.warning("TELEGRAM_CHAT_ID not set — skipping medication check.")
         return
 
-    store = MDStorage()
+    from app.tenant import KNOWN_TENANTS, SASHA_TELEGRAM_ID, set_current_user_id
+
+    # Multi-tenant: run for each known operator with a data dir
+    tenant_ids = list(KNOWN_TENANTS.keys()) or [SASHA_TELEGRAM_ID]
     today_date = date.today()
     today_str = today_date.isoformat()
 
-    med_state = _load_state()
+    for tenant_id in tenant_ids:
+        set_current_user_id(tenant_id)
+        store = MDStorage.for_user(tenant_id)
+        med_state = _load_state()
+        med_files = store.list_dir(MEDICATIONS_DIR)
+        if not med_files:
+            logger.debug(
+                "No medication files for tenant %s in %s.",
+                tenant_id,
+                MEDICATIONS_DIR,
+            )
+            continue
 
-    med_files = store.list_dir(MEDICATIONS_DIR)
-    if not med_files:
-        logger.debug("No medication files found in %s.", MEDICATIONS_DIR)
-        return
+        for meta in med_files:
+            med_name = meta.get("name") or meta.get("_path", "unknown")
+            days_left = meta.get("days_left")
+            rx_expiry: str | None = meta.get("prescription_expiry")
 
-    for meta in med_files:
-        med_name = meta.get("name") or meta.get("_path", "unknown")
-        days_left = meta.get("days_left")
-        rx_expiry: str | None = meta.get("prescription_expiry")
+            if isinstance(days_left, (int, float)):
+                days_left = int(days_left)
+            else:
+                try:
+                    days_left = int(days_left) if days_left is not None else None
+                except (ValueError, TypeError):
+                    days_left = None
 
-        if isinstance(days_left, (int, float)):
-            days_left = int(days_left)
-        else:
-            try:
-                days_left = int(days_left) if days_left is not None else None
-            except (ValueError, TypeError):
-                days_left = None
+            if days_left is not None:
+                await _stock_check(
+                    med_name, days_left, med_state, today_str, chat_id
+                )
 
-        if days_left is not None:
-            await _stock_check(med_name, days_left, med_state, today_str, chat_id)
+            await _rx_check(
+                med_name, rx_expiry, med_state, today_str, today_date, chat_id
+            )
 
-        await _rx_check(med_name, rx_expiry, med_state, today_str, today_date, chat_id)
-
-    _save_state(med_state)
-    logger.info("Medication check complete — %d files scanned.", len(med_files))
+        _save_state(med_state)
+        logger.info(
+            "Medication check tenant %s — %d files scanned.",
+            tenant_id,
+            len(med_files),
+        )
 
 
 def main() -> None:

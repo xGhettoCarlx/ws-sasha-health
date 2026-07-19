@@ -25,6 +25,7 @@ from telegram_init_data import (
 )
 
 from app.config import get_settings
+from app.tenant import bind_user_from_auth, get_current_user_id, peek_current_user_id
 
 # ── auth logger ──────────────────────────────────────────────────────────
 _auth_log = logging.getLogger("auth")
@@ -245,66 +246,106 @@ def _extract_init_data(request: Request) -> str | None:
 
 
 async def verify_telegram_auth_from_request(request: Request) -> dict:
-    """FastAPI dependency – extract, validate, and check access.
+    """FastAPI dependency – extract, validate, check access, bind tenant.
 
-    1. Web auth via ``X-User-ID`` header (sessionStorage-stored after Login Widget).
-    2. Extract initData from request.
+    1. Web auth via ``X-User-ID`` header (sessionStorage after Login Widget).
+    2. Extract initData from request (Authorization tma / X-Telegram-InitData).
     3. Validate HMAC signature (soft-fallback for multi-bot).
-    4. Apply access gate: unverified users must be in the whitelist.
-    5. Dev mode (no real BOT_TOKEN): allow mock user without credentials.
+    4. Access gate: unverified users must be whitelisted.
+    5. Dev mode (no real BOT_TOKEN): mock user → default tenant (Sasha).
+    6. Bind ``tenant_id`` context so MDStorage scopes to data/users/<id>/.
     """
     path = request.url.path
     if path in ("/health", "/") or path.startswith("/static"):
         return {}
 
-    # ── Web auth path: X-User-ID header set by frontend after Login Widget ──
-    web_user_id = request.headers.get("X-User-ID")
-    if web_user_id:
-        try:
-            uid = int(web_user_id)
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=401, detail="Invalid X-User-ID header")
+    user: dict
+
+    # Prefer Telegram initData (signed) over forgeable X-User-ID
+    init_data = _extract_init_data(request)
+    if init_data:
+        user = verify_telegram_auth(init_data)
+
         # Admin bypass — 80101636 is always allowed regardless of whitelist
-        if uid == 80101636:
-            return {"id": uid, "verified": True, "auth_method": "admin"}
-        if not is_whitelisted(uid):
+        if user.get("id") == 80101636:
+            user["verified"] = True
+        elif not user.get("verified") and not is_whitelisted(user["id"]):
             raise HTTPException(
                 status_code=403,
                 detail={
                     "status": "pending_approval",
                     "message": "Требуется одобрение администратора",
-                    "user_id": uid,
+                    "user_id": user["id"],
                 },
             )
-        return {"id": uid, "verified": True, "auth_method": "web"}
-
-    # ── Telegram initData path ──
-    init_data = _extract_init_data(request)
-    if not init_data:
-        # Local/dev: placeholder BOT_TOKEN → open API for SPA smoke tests
-        if get_bot_token() is None:
-            return {"id": 0, "first_name": "Dev", "verified": True, "auth_method": "dev"}
-        raise HTTPException(status_code=401, detail="Authentication required")
-
-    user = verify_telegram_auth(init_data)
-
-    # Admin bypass — 80101636 is always allowed regardless of whitelist
-    if user.get("id") == 80101636:
-        user["verified"] = True
-        return user
-
-    if not user.get("verified") and not is_whitelisted(user["id"]):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "status": "pending_approval",
-                "message": "Требуется одобрение администратора",
-                "user_id": user["id"],
-            },
+        user["auth_method"] = user.get("auth_method") or "telegram"
+    else:
+        # ── Web / header path (no initData) ──
+        web_user_id = request.headers.get("X-User-ID") or request.headers.get(
+            "X-Telegram-User-Id"
         )
+        if web_user_id:
+            try:
+                uid = int(web_user_id)
+            except (ValueError, TypeError):
+                raise HTTPException(
+                    status_code=401, detail="Invalid X-User-ID header"
+                )
+            # Admin bypass — 80101636 is always allowed regardless of whitelist
+            if uid == 80101636:
+                user = {"id": uid, "verified": True, "auth_method": "admin"}
+            elif not is_whitelisted(uid):
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "status": "pending_approval",
+                        "message": "Требуется одобрение администратора",
+                        "user_id": uid,
+                    },
+                )
+            else:
+                user = {"id": uid, "verified": True, "auth_method": "web"}
+        elif get_bot_token() is None:
+            # Local/dev: placeholder BOT_TOKEN → open API for SPA smoke tests
+            user = {
+                "id": 0,
+                "first_name": "Dev",
+                "verified": True,
+                "auth_method": "dev",
+            }
+        else:
+            raise HTTPException(status_code=401, detail="Authentication required")
 
+    # Multi-tenant: scope storage to data/users/<telegram_id>/
+    tenant_id = bind_user_from_auth(user)
+    request.state.user_id = tenant_id
+    request.state.user = user
     return user
+
+
+async def get_current_user_id_dep(
+    user: dict = Depends(verify_telegram_auth_from_request),
+) -> int:
+    """Dependency: return telegram_id (tenant) for the authenticated user."""
+    if "tenant_id" in user:
+        return int(user["tenant_id"])
+    return get_current_user_id()
 
 
 # Module-level FastAPI dependency – inject with ``Depends(require_auth)``
 require_auth = Depends(verify_telegram_auth_from_request)
+# Explicit telegram_id for routes that only need the id
+require_user_id = Depends(get_current_user_id_dep)
+
+# re-export for ``from app.auth import get_current_user_id``
+__all__ = [
+    "require_auth",
+    "require_user_id",
+    "verify_telegram_auth",
+    "verify_telegram_auth_from_request",
+    "get_current_user_id",
+    "get_current_user_id_dep",
+    "peek_current_user_id",
+    "get_bot_token",
+    "is_whitelisted",
+]

@@ -99,7 +99,9 @@ WINDOW_CONFIG: list[dict[str, Any]] = [
 
 
 def _state_path() -> Path:
-    return Path(get_settings().DATA_DIR) / "cron_visits_state.json"
+    from app.storage import MDStorage
+
+    return MDStorage().base_dir / "cron_visits_state.json"
 
 
 def _load_state() -> dict[str, Any]:
@@ -254,20 +256,24 @@ async def run() -> None:
         logger.warning("TELEGRAM_CHAT_ID not set — skipping visit check.")
         return
 
-    store = MDStorage()
+    from app.tenant import KNOWN_TENANTS, SASHA_TELEGRAM_ID, set_current_user_id
 
-    metas = store.list_dir(SCHEDULE_DIR)
-    if not metas:
-        logger.debug("No visit files found in %s.", SCHEDULE_DIR)
-        return
-
-    state = _load_state()
-
-    for meta in metas:
-        await _check_visit(meta, state, chat_id)
-
-    _save_state(state)
-    logger.info("Visit check complete — %d visits scanned.", len(metas))
+    for tenant_id in list(KNOWN_TENANTS.keys()) or [SASHA_TELEGRAM_ID]:
+        set_current_user_id(tenant_id)
+        store = MDStorage.for_user(tenant_id)
+        metas = store.list_dir(SCHEDULE_DIR)
+        if not metas:
+            logger.debug(
+                "No visit files for tenant %s in %s.", tenant_id, SCHEDULE_DIR
+            )
+            continue
+        state = _load_state()
+        for meta in metas:
+            await _check_visit(meta, state, chat_id)
+        _save_state(state)
+        logger.info(
+            "Visit check tenant %s — %d visits scanned.", tenant_id, len(metas)
+        )
 
 
 def main() -> None:

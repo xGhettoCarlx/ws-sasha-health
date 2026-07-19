@@ -128,7 +128,8 @@ NOT_COVERED = [
 
 
 def _store() -> MDStorage:
-    return MDStorage(base_dir=get_settings().DATA_DIR)
+    """Tenant-scoped storage (data/users/<telegram_id>/)."""
+    return MDStorage()
 
 
 def _today() -> str:

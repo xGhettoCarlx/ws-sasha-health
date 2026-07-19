@@ -56,7 +56,10 @@ export function useAuth(): AuthState {
       const rawInitData = tg.initData || "";
       const unsafeUser = tg.initDataUnsafe?.user;
       setInitData(rawInitData);
-      if (unsafeUser?.id) setUserId(unsafeUser.id);
+      if (unsafeUser?.id) {
+        setUserId(unsafeUser.id);
+        sessionStorage.setItem("tg_user_id", String(unsafeUser.id));
+      }
       sessionStorage.setItem("tg_init_data", rawInitData);
 
       try {

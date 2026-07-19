@@ -37,7 +37,8 @@ def _env(monkeypatch, test_data_dir):
 
 @pytest.fixture
 def store(test_data_dir):
-    return MDStorage(base_dir=test_data_dir)
+    # Multi-tenant: API uses data/users/<auth_user_id>/ — match TEST_USER
+    return MDStorage.for_user(TEST_USER["id"])
 
 
 def _write_visit(store, vid: str, **meta):

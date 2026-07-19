@@ -4,8 +4,11 @@ Storage engine — python-frontmatter CRUD for .md file database.
 Mirrors the Hermes directory layout:
     {category}/{YYYY-MM-DD}_{type_name}/{date}_{type}.md
 
+Multi-tenant (HEALTH-MULTI-TENANT-ROUTING):
+    Default base_dir = {DATA_DIR}/users/<telegram_id>/
+    via request-scoped tenant context (app.tenant).
+
 Atomic writes via tempfile + os.replace(), file locking via fcntl.flock.
-DATA_DIR from app.config.get_settings().
 """
 
 import fcntl
@@ -27,15 +30,69 @@ class MDStorage:
     followed by markdown body content.
 
     Usage:
-        store = MDStorage()               # uses DATA_DIR from config
-        md, body = store.read("profile.md")
+        store = MDStorage()               # current tenant (data/users/<id>/)
+        store = MDStorage.for_user(80101636)
+        md, body = store.read("карточка.md")
         store.write("profile.md", {"name": "Sasha"}, "# Profile")
         results = store.list_dir("visits")
         store.create_bundle("visits", "2026-07-01", "терапевт", "/tmp/scan.jpg")
     """
 
-    def __init__(self, base_dir: str | Path | None = None) -> None:
-        self.base_dir = Path(base_dir) if base_dir else Path(get_settings().DATA_DIR)
+    def __init__(
+        self,
+        base_dir: str | Path | None = None,
+        *,
+        user_id: int | str | None = None,
+        shared: bool = False,
+    ) -> None:
+        """Init storage root.
+
+        Args:
+            base_dir: Explicit root (tests / migration). Highest priority.
+            user_id:  Scope to ``data/users/<user_id>/``.
+            shared:   If True and no base_dir/user_id, use raw DATA_DIR
+                      (legacy global — avoid in HTTP handlers).
+        """
+        if base_dir is not None:
+            self.base_dir = Path(base_dir)
+            self.user_id = user_id
+            return
+
+        if user_id is not None:
+            from app.tenant import ensure_user_data_dir
+
+            self.user_id = int(user_id)
+            self.base_dir = ensure_user_data_dir(self.user_id)
+            return
+
+        if shared:
+            self.user_id = None
+            self.base_dir = Path(get_settings().DATA_DIR)
+            return
+
+        # Request-scoped tenant from auth dependency
+        from app.tenant import (
+            ensure_user_data_dir,
+            peek_current_user_id,
+            default_tenant_id,
+        )
+
+        uid = peek_current_user_id()
+        if uid is None:
+            # Cron / CLI without auth: default tenant (Sasha)
+            uid = default_tenant_id()
+        self.user_id = int(uid)
+        self.base_dir = ensure_user_data_dir(self.user_id)
+
+    @classmethod
+    def for_user(cls, user_id: int | str) -> "MDStorage":
+        """Explicit tenant storage (agents: sasha-health / dasha-health)."""
+        return cls(user_id=user_id)
+
+    @classmethod
+    def shared_root(cls) -> "MDStorage":
+        """Raw DATA_DIR (only for migration / healthcheck / admin shared files)."""
+        return cls(shared=True)
 
     # ------------------------------------------------------------------
     # read

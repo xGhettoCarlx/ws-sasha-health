@@ -35,8 +35,8 @@ QUICK_RECORDS_DIR = "дневник"
 
 
 def _get_store() -> MDStorage:
-    """Return MDStorage instance for the configured DATA_DIR."""
-    return MDStorage(base_dir=get_settings().DATA_DIR)
+    """Return tenant-scoped MDStorage (data/users/<telegram_id>/)."""
+    return MDStorage()
 
 
 def _read_metadata_safe(store: MDStorage, rel_path: str) -> dict | None:

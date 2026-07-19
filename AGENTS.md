@@ -10,11 +10,14 @@
 
 Users open a WebApp at base path `/sh/`, authenticate via Telegram `initData`, and manage:
 
-- Profile / diagnoses / allergies (`data/карточка.md`)
-- Medications + stock alerts (`data/лекарства/`)
+- Profile / diagnoses / allergies (`data/users/<telegram_id>/карточка.md`)
+- Medications + stock alerts (`data/users/<telegram_id>/лекарства/`)
 - Visits, labs, imaging (Hermes-style MD bundles)
 - Insurance, fluorography, strategy, symptom diary
 - Inbox: upload scan → optional Grok Vision OCR → verify
+
+**Multi-tenant:** each Telegram user is isolated under `data/users/<telegram_id>/`
+(Sasha `80101636`, Dasha `1342974567`). Auth binds tenant via initData / `X-User-ID`.
 
 It is **not** a voice step-counter bot and does **not** use Supabase/PostgreSQL in the runtime path.
 
@@ -23,8 +26,8 @@ It is **not** a voice step-counter bot and does **not** use Supabase/PostgreSQL 
 | Layer | Technology | Notes |
 |-------|------------|--------|
 | **Backend** | Python 3.12+, **FastAPI** | Entry: `app/main.py`, port 8000 |
-| **Storage** | **MDStorage** — Markdown + YAML frontmatter | `app/storage.py`, root `data/` |
-| **Auth** | Telegram Mini App initData (HMAC) + whitelist | `app/auth.py`; multi-bot path supported |
+| **Storage** | **MDStorage** — Markdown + YAML frontmatter | `app/storage.py`, root `data/users/<tg_id>/` |
+| **Auth** | Telegram Mini App initData (HMAC) + whitelist | `app/auth.py` + `app/tenant.py`; multi-tenant |
 | **Bot** | aiogram 3.x | **Outbound notifications only** — no conversational webhook handlers |
 | **OCR** | xAI Grok Vision (optional) | `app/ocr.py`; needs `XAI_API_KEY` |
 | **Frontend** | **React 19 + TypeScript + Vite 6** | `frontend/src/`, SPA base `/sh/` |

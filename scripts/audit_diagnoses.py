@@ -751,7 +751,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--data-dir",
         type=Path,
         default=None,
-        help="Path to sasha-health data/ (default: <repo>/data)",
+        help="Path to tenant data dir (default: <repo>/data/users/80101636)",
     )
     ap.add_argument(
         "--no-patch-profile",
@@ -759,7 +759,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Do not write verification_status into карточка.md",
     )
     args = ap.parse_args(argv)
-    data_dir = (args.data_dir or (_project_root() / "data")).resolve()
+    data_dir = (
+        args.data_dir or (_project_root() / "data" / "users" / "80101636")
+    ).resolve()
     if not data_dir.is_dir():
         print(f"data dir not found: {data_dir}", file=sys.stderr)
         return 1

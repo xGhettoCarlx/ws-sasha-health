@@ -58,7 +58,9 @@ async def list_bundles(
     user: dict = require_auth,
 ):
     """List all bundles in a category with preview info (date, name)."""
-    data_dir = Path(get_settings().DATA_DIR)
+    from app.storage import MDStorage
+
+    data_dir = MDStorage().base_dir
     cat_path = data_dir / category
 
     if not cat_path.is_dir():
@@ -109,7 +111,9 @@ async def serve_original(
     user: dict = require_auth,
 ):
     """Serve the original JPG/PNG/PDF file for a bundle."""
-    data_dir = Path(get_settings().DATA_DIR)
+    from app.storage import MDStorage
+
+    data_dir = MDStorage().base_dir
     filepath = _find_original(data_dir, category, bundle_id)
 
     if filepath is None:
@@ -129,7 +133,9 @@ async def serve_thumbnail(
     user: dict = require_auth,
 ):
     """Serve the thumbnail for a bundle (same as original for now)."""
-    data_dir = Path(get_settings().DATA_DIR)
+    from app.storage import MDStorage
+
+    data_dir = MDStorage().base_dir
     filepath = _find_original(data_dir, category, bundle_id)
 
     if filepath is None:

@@ -20,12 +20,28 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.auth import is_whitelisted, verify_telegram_auth
+from app.auth import is_whitelisted, require_auth, verify_telegram_auth
 from app.config import get_settings
+from app.tenant import tenant_info
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+@router.get("/me")
+async def auth_me(user: dict = require_auth):
+    """Return current telegram_id + tenant data_dir (multi-tenant routing)."""
+    info = tenant_info(user.get("tenant_id") or user.get("id"))
+    return {
+        "ok": True,
+        "user_id": info["telegram_id"],
+        "tenant_id": info["telegram_id"],
+        "tenant_label": info["label"],
+        "data_dir": info["data_dir"],
+        "auth_method": user.get("auth_method"),
+        "verified": user.get("verified"),
+    }
 
 
 class PWAAuthRequest(BaseModel):

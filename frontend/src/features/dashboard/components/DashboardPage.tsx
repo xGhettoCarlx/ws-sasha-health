@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Shield } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderOpen, Shield } from "lucide-react";
 import {
   GlassCard,
   PageHeader,
@@ -10,12 +10,6 @@ import {
   BpChart,
   MiniSparkline,
 } from "../../../components/apple";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "../../../components/ui/dialog";
 import {
   fetchComplaints,
   fetchOverview,
@@ -33,54 +27,11 @@ type VitalItem = {
   when?: string | null;
 };
 
-type Diagnosis = {
-  name?: string;
-  status?: string;
-  date?: string;
-  source?: string | null;
-  content?: string | null;
-  doctor?: string | null;
-  trust_tier?: string;
-};
-
 function parseBp(bp?: string | null): { sys: number; dia: number } | null {
   if (!bp) return null;
   const m = String(bp).match(/(\d{2,3})\s*\/\s*(\d{2,3})/);
   if (!m) return null;
   return { sys: Number(m[1]), dia: Number(m[2]) };
-}
-
-/** Extract doctor/clinic hint from diagnosis source free-text */
-function parseDiagnosisMeta(d: Diagnosis): {
-  doctor: string;
-  basis: string;
-  date: string;
-} {
-  const source = (d.source || d.content || "").trim();
-  const date = d.date || "—";
-  // "осмотр Кабаев 10.06.2026" / "Кабаев 10.06.2026" / "УЗИ …"
-  let doctor = d.doctor || "";
-  if (!doctor && source) {
-    const m =
-      source.match(
-        /(?:осмотр|врач|терапевт|кардиолог|гастро|лор|проктолог|офтальмолог)\s+([А-ЯЁA-Z][а-яёa-zA-Z.\-]+(?:\s+[А-ЯЁA-Z]\.?)?)/i,
-      ) ||
-      source.match(
-        /([А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ]\.){0,2})\s+\d{1,2}[./]\d{1,2}/,
-      );
-    if (m?.[1]) doctor = m[1].trim();
-  }
-  if (!doctor && source) {
-    // fall back to leading human name before + or comma
-    const headPart = source.split(/[+|,]/)[0];
-    const head = (headPart ?? "").trim();
-    if (head && /[А-ЯЁа-яё]/.test(head) && head.length < 60) doctor = head;
-  }
-  return {
-    doctor: doctor || "не указан",
-    basis: source || "нет комментария в карточке",
-    date,
-  };
 }
 
 export function DashboardPage() {
@@ -109,7 +60,6 @@ export function DashboardPage() {
   const [weight, setWeight] = useState("");
   const [when, setWhen] = useState<"morning" | "evening" | "other">("morning");
   const [msg, setMsg] = useState<string | null>(null);
-  const [diagnosisOpen, setDiagnosisOpen] = useState<Diagnosis | null>(null);
 
   const saveVital = useMutation({
     mutationFn: postVital,
@@ -164,14 +114,9 @@ export function DashboardPage() {
 
   const openComplaints: ComplaintItem[] = complaintsData?.items || [];
 
-  const diagnoses = useMemo(() => {
-    const raw = (data?.patient?.diagnoses || []) as Diagnosis[];
-    // Prefer active (🔴/🟡) first
-    return [...raw].sort((a, b) => {
-      const rank = (s?: string) =>
-        s?.includes("🔴") ? 0 : s?.includes("🟡") ? 1 : 2;
-      return rank(a.status) - rank(b.status);
-    });
+  const diagnosisCount = useMemo(() => {
+    const raw = data?.patient?.diagnoses;
+    return Array.isArray(raw) ? raw.length : 0;
   }, [data]);
 
   const saveBp = () => {
@@ -443,93 +388,29 @@ export function DashboardPage() {
         </Link>
       </section>
 
-      {/* Clickable diagnoses */}
-      {diagnoses.length > 0 && (
-        <section>
-          <SectionHeader
-            title="Активные"
-            action={<span className="caption">тап · анамнез</span>}
-          />
-          <GlassCard padding="none">
-            {diagnoses.slice(0, 8).map((d, i) => {
-              const meta = parseDiagnosisMeta(d);
-              return (
-                <div key={`${d.name}-${d.date}-${i}`}>
-                  {i > 0 && <div className="hairline ml-4" />}
-                  <button
-                    type="button"
-                    onClick={() => setDiagnosisOpen(d)}
-                    className="w-full text-left px-4 py-3 flex items-start gap-3 pressable"
-                  >
-                    <span className="text-[16px] leading-none mt-0.5">
-                      {d.status || "•"}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[15px] font-medium leading-snug">
-                        {d.name}
-                      </p>
-                      <p className="text-[12px] text-[#8E8E93] mt-0.5">
-                        {meta.date}
-                        {meta.doctor !== "не указан" ? ` · ${meta.doctor}` : ""}
-                      </p>
-                    </div>
-                    <ChevronDown className="w-4 h-4 text-[#C7C7CC] mt-1 shrink-0" />
-                  </button>
-                </div>
-              );
-            })}
-          </GlassCard>
-        </section>
-      )}
-
-      <Dialog
-        open={!!diagnosisOpen}
-        onOpenChange={(o) => !o && setDiagnosisOpen(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="text-[18px] leading-snug pr-6">
-              {diagnosisOpen?.name || "Диагноз"}
-            </DialogTitle>
-          </DialogHeader>
-          {diagnosisOpen && (
-            <div className="space-y-3 mt-1">
-              <MetaRow label="Статус" value={diagnosisOpen.status || "—"} />
-              <MetaRow
-                label="Дата фиксации"
-                value={parseDiagnosisMeta(diagnosisOpen).date}
-              />
-              <MetaRow
-                label="Кто / откуда"
-                value={parseDiagnosisMeta(diagnosisOpen).doctor}
-              />
-              <div>
-                <p className="text-[12px] font-semibold text-[#8E8E93] uppercase tracking-wide mb-1">
-                  Основание / комментарий
-                </p>
-                <p className="text-[14px] leading-relaxed text-[#1C1C1E]">
-                  {parseDiagnosisMeta(diagnosisOpen).basis}
-                </p>
-              </div>
+      {/* Medcard — diagnoses live behind this single entry point */}
+      <section>
+        <Link to="/medcard" className="block">
+          <GlassCard padding="md" className="pressable flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-[#AF52DE]/15 flex items-center justify-center shrink-0">
+              <FolderOpen className="w-5 h-5 text-[#AF52DE]" />
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            <div className="flex-1 min-w-0">
+              <p className="text-[16px] font-semibold">Моя медкарта</p>
+              <p className="text-[12px] text-[#8E8E93] mt-0.5">
+                {diagnosisCount > 0
+                  ? `Диагнозы и анамнез · ${diagnosisCount}`
+                  : "Диагнозы и анамнез"}
+              </p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#C7C7CC] shrink-0" />
+          </GlassCard>
+        </Link>
+      </section>
 
       <p className="text-[11px] text-[#AEAEB2] text-center px-4 pb-2 leading-relaxed">
         {data.disclaimer}
       </p>
-    </div>
-  );
-}
-
-function MetaRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-[12px] font-semibold text-[#8E8E93] uppercase tracking-wide">
-        {label}
-      </p>
-      <p className="text-[15px] text-[#1C1C1E] mt-0.5">{value}</p>
     </div>
   );
 }

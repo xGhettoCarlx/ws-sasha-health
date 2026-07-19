@@ -83,7 +83,8 @@ export default function InsurancePage() {
     staleTime: 60_000,
   });
 
-  const [openCovered, setOpenCovered] = useState(true);
+  /** Compact: coverage lists collapsed by default; Trojan open near top */
+  const [openCovered, setOpenCovered] = useState(false);
   const [openExcluded, setOpenExcluded] = useState(false);
   const [openTrojan, setOpenTrojan] = useState(true);
 
@@ -241,7 +242,28 @@ export default function InsurancePage() {
         </div>
       </GlassCard>
 
-      {/* Covered */}
+      {/* Trojan Horse — top, right under policy limits */}
+      <section>
+        <button
+          type="button"
+          onClick={() => setOpenTrojan((v) => !v)}
+          className="w-full flex items-center justify-between px-0.5 mb-2 pressable"
+        >
+          <SectionHeader title="Троянский конь" />
+          <ChevronDown
+            className={cn(
+              "w-5 h-5 text-[#8E8E93] transition-transform",
+              openTrojan && "rotate-180",
+            )}
+          />
+        </button>
+        <p className="text-[12px] text-[#8E8E93] mb-2 px-0.5">
+          Выбери направление — реальные жалобы + формулировки для аппрува чекапа
+        </p>
+        {openTrojan && <TrojanHorsePanel />}
+      </section>
+
+      {/* Covered — collapsed by default */}
       <section>
         <button
           type="button"
@@ -281,7 +303,7 @@ export default function InsurancePage() {
         )}
       </section>
 
-      {/* Not covered */}
+      {/* Not covered — collapsed by default */}
       <section>
         <button
           type="button"
@@ -336,27 +358,6 @@ export default function InsurancePage() {
             </GlassCard>
           </a>
         </div>
-      </section>
-
-      {/* Trojan Horse */}
-      <section>
-        <button
-          type="button"
-          onClick={() => setOpenTrojan((v) => !v)}
-          className="w-full flex items-center justify-between px-0.5 mb-2 pressable"
-        >
-          <SectionHeader title="Троянский конь" />
-          <ChevronDown
-            className={cn(
-              "w-5 h-5 text-[#8E8E93] transition-transform",
-              openTrojan && "rotate-180",
-            )}
-          />
-        </button>
-        <p className="text-[12px] text-[#8E8E93] mb-2 px-0.5">
-          Выбери направление — реальные жалобы + формулировки для аппрува чекапа
-        </p>
-        {openTrojan && <TrojanHorsePanel />}
       </section>
     </div>
   );

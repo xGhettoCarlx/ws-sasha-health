@@ -28,11 +28,11 @@ const NavigatorPage = lazy(
 const PipelinePage = lazy(
   () => import("../features/pipeline/components/PipelinePage"),
 );
-const TimelinePage = lazy(
-  () => import("../features/timeline/components/TimelinePage"),
-);
 const InsurancePage = lazy(
   () => import("../features/insurance/components/InsurancePage"),
+);
+const MedcardPage = lazy(
+  () => import("../features/medcard/components/MedcardPage"),
 );
 
 function SuspensePage({ children }: { children: ReactNode }) {
@@ -68,14 +68,8 @@ export const routes: ReactNode = (
           </SuspensePage>
         }
       />
-      <Route
-        path="timeline"
-        element={
-          <SuspensePage>
-            <TimelinePage />
-          </SuspensePage>
-        }
-      />
+      {/* Лента removed — visits + prompt live in Конвейер */}
+      <Route path="timeline" element={<Navigate to="/pipeline" replace />} />
       <Route
         path="insurance"
         element={
@@ -84,7 +78,15 @@ export const routes: ReactNode = (
           </SuspensePage>
         }
       />
-      {/* Deep links kept (not in tab bar). trojan/previsit removed → Timeline prompt */}
+      <Route
+        path="medcard"
+        element={
+          <SuspensePage>
+            <MedcardPage />
+          </SuspensePage>
+        }
+      />
+      {/* Deep links kept (not in tab bar) */}
       <Route
         path="checkups"
         element={
@@ -110,7 +112,7 @@ export const routes: ReactNode = (
         }
       />
       <Route path="trojan" element={<Navigate to="/insurance" replace />} />
-      <Route path="previsit" element={<Navigate to="/timeline" replace />} />
+      <Route path="previsit" element={<Navigate to="/pipeline" replace />} />
       <Route
         path="records"
         element={

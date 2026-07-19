@@ -31,9 +31,7 @@ const PipelinePage = lazy(
 const InsurancePage = lazy(
   () => import("../features/insurance/components/InsurancePage"),
 );
-const MedcardPage = lazy(
-  () => import("../features/medcard/components/MedcardPage"),
-);
+// Medcard replaced by Profile health dashboard (Part 1 Phase 2)
 
 function SuspensePage({ children }: { children: ReactNode }) {
   return <Suspense fallback={<PageSkeleton />}>{children}</Suspense>;
@@ -78,14 +76,8 @@ export const routes: ReactNode = (
           </SuspensePage>
         }
       />
-      <Route
-        path="medcard"
-        element={
-          <SuspensePage>
-            <MedcardPage />
-          </SuspensePage>
-        }
-      />
+      {/* Legacy medcard deep-link → Profile dashboard */}
+      <Route path="medcard" element={<Navigate to="/profile" replace />} />
       {/* Deep links kept (not in tab bar) */}
       <Route
         path="checkups"

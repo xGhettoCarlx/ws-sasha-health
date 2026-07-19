@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { House, GitBranch, Shield } from "lucide-react";
+import { House, GitBranch, Shield, UserRound } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 interface Tab {
@@ -8,11 +8,12 @@ interface Tab {
   icon: React.FC<React.ComponentProps<"svg">>;
 }
 
-/** DoD HEALTH-APP-UX-REFINEMENT-V2: Обзор · Конвейер · Страховка (Лента removed) */
+/** Part 1 UX: Обзор · Конвейер · Страховка · Профиль (медкарта → профиль) */
 const tabs: Tab[] = [
   { to: "/dashboard", label: "Обзор", icon: House },
   { to: "/pipeline", label: "Конвейер", icon: GitBranch },
   { to: "/insurance", label: "Страховка", icon: Shield },
+  { to: "/profile", label: "Профиль", icon: UserRound },
 ];
 
 export function BottomNav() {

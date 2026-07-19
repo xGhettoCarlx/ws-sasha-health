@@ -1,21 +1,17 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, FolderOpen, Shield } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import {
   GlassCard,
   PageHeader,
   SectionHeader,
-  StatusPill,
   BpChart,
   MiniSparkline,
 } from "../../../components/apple";
 import {
-  fetchComplaints,
   fetchOverview,
   fetchVitals,
   postVital,
-  type ComplaintItem,
 } from "../../../lib/navigator-api";
 import { cn } from "../../../lib/utils";
 
@@ -48,17 +44,10 @@ export function DashboardPage() {
     staleTime: 30_000,
   });
 
-  const { data: complaintsData } = useQuery({
-    queryKey: ["complaints", false],
-    queryFn: () => fetchComplaints(false),
-    staleTime: 30_000,
-  });
-
   const [expanded, setExpanded] = useState<"bp" | "weight" | null>(null);
   const [sys, setSys] = useState("");
   const [dia, setDia] = useState("");
   const [weight, setWeight] = useState("");
-  const [when, setWhen] = useState<"morning" | "evening" | "other">("morning");
   const [msg, setMsg] = useState<string | null>(null);
 
   const saveVital = useMutation({
@@ -112,19 +101,13 @@ export function DashboardPage() {
 
   const weightSpark = weightSeries.map((w) => w.value);
 
-  const openComplaints: ComplaintItem[] = complaintsData?.items || [];
-
-  const diagnosisCount = useMemo(() => {
-    const raw = data?.patient?.diagnoses;
-    return Array.isArray(raw) ? raw.length : 0;
-  }, [data]);
-
   const saveBp = () => {
     if (!sys || !dia) {
       setMsg("Введите систолу и диастолу");
       return;
     }
-    saveVital.mutate({ bp: `${sys}/${dia}`, when });
+    // Measurement time is recorded server-side at save (current datetime).
+    saveVital.mutate({ bp: `${sys}/${dia}` });
   };
 
   const saveWeight = () => {
@@ -132,7 +115,8 @@ export function DashboardPage() {
       setMsg("Введите вес");
       return;
     }
-    saveVital.mutate({ weight_kg: Number(weight.replace(",", ".")), when });
+    // Measurement time is recorded server-side at save (current datetime).
+    saveVital.mutate({ weight_kg: Number(weight.replace(",", ".")) });
   };
 
   if (isLoading) {
@@ -228,7 +212,6 @@ export function DashboardPage() {
               </p>
             )}
             <p className="text-[12px] font-semibold mt-4 mb-2">Быстрый ввод</p>
-            <WhenPills when={when} setWhen={setWhen} />
             <div className="grid grid-cols-2 gap-2 mb-2">
               <input
                 inputMode="numeric"
@@ -255,7 +238,7 @@ export function DashboardPage() {
               disabled={saveVital.isPending}
               className="w-full h-11 rounded-2xl bg-[#FF2D55] text-white font-semibold text-[15px] pressable disabled:opacity-50"
             >
-              {saveVital.isPending ? "Сохраняю…" : "Сохранить АД"}
+              {saveVital.isPending ? "Сохраняю…" : "Сохранить"}
             </button>
             {msg && (
               <p className="text-[13px] text-center mt-2 text-[#8E8E93]">{msg}</p>
@@ -286,7 +269,6 @@ export function DashboardPage() {
               </p>
             )}
             <p className="text-[12px] font-semibold mt-4 mb-2">Быстрый ввод</p>
-            <WhenPills when={when} setWhen={setWhen} />
             <input
               inputMode="decimal"
               placeholder="кг"
@@ -300,7 +282,7 @@ export function DashboardPage() {
               disabled={saveVital.isPending}
               className="w-full h-11 rounded-2xl bg-[#34C759] text-white font-semibold text-[15px] pressable disabled:opacity-50"
             >
-              {saveVital.isPending ? "Сохраняю…" : "Сохранить вес"}
+              {saveVital.isPending ? "Сохраняю…" : "Сохранить"}
             </button>
             {msg && (
               <p className="text-[13px] text-center mt-2 text-[#8E8E93]">{msg}</p>
@@ -309,134 +291,9 @@ export function DashboardPage() {
         )}
       </section>
 
-      {/* Current complaints — replaces hub links */}
-      <section>
-        <SectionHeader
-          title="Текущие жалобы"
-          action={
-            <span className="caption">
-              {openComplaints.length || data.complaints_open || 0}
-            </span>
-          }
-        />
-        {openComplaints.length === 0 ? (
-          <GlassCard padding="md">
-            <p className="text-[14px] text-[#8E8E93]">
-              Открытых жалоб нет — копилка пуста.
-            </p>
-          </GlassCard>
-        ) : (
-          <div className="space-y-2">
-            {openComplaints.map((c) => (
-              <GlassCard key={c.id} padding="md">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-[15px] font-medium leading-snug">{c.text}</p>
-                  <StatusPill
-                    tone={
-                      c.severity >= 7 ? "danger" : c.severity >= 4 ? "warn" : "info"
-                    }
-                  >
-                    {c.severity}/10
-                  </StatusPill>
-                </div>
-                <p className="text-[12px] text-[#8E8E93] mt-1.5">
-                  {c.date}
-                  {c.specialty_hint ? ` · ${c.specialty_hint}` : ""}
-                  {c.tags?.length ? ` · ${c.tags.join(", ")}` : ""}
-                </p>
-              </GlassCard>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Insurance strip → always clickable → tab Страховка */}
-      <section>
-        <SectionHeader title="Страховка" />
-        <Link
-          to="/insurance"
-          className="block active:opacity-80"
-          aria-label="Открыть раздел Страховка"
-        >
-          <GlassCard
-            padding="md"
-            pressable
-            className="flex items-center gap-3 ring-1 ring-[#34C759]/20"
-          >
-            <div className="w-11 h-11 rounded-2xl bg-[#34C759]/15 flex items-center justify-center shrink-0">
-              <Shield className="w-5 h-5 text-[#34C759]" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[15px] font-semibold truncate">
-                {(data.insurance as { policy?: string } | null | undefined)
-                  ?.policy || "ДМС · Белгосстрах"}
-              </p>
-              <p className="text-[13px] text-[#8E8E93]">
-                {data.insurance
-                  ? `остаток ${Number(
-                      (data.insurance as { remaining?: number }).remaining ?? 0,
-                    ).toLocaleString("ru-RU")} BYN${
-                      (data.insurance as { expiry?: string }).expiry
-                        ? ` · до ${(data.insurance as { expiry?: string }).expiry}`
-                        : ""
-                    }`
-                  : "Полис, покрытие, Троянский конь"}
-              </p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-[#C7C7CC] shrink-0" />
-          </GlassCard>
-        </Link>
-      </section>
-
-      {/* Medcard — diagnoses live behind this single entry point */}
-      <section>
-        <Link to="/medcard" className="block">
-          <GlassCard padding="md" className="pressable flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-[#AF52DE]/15 flex items-center justify-center shrink-0">
-              <FolderOpen className="w-5 h-5 text-[#AF52DE]" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[16px] font-semibold">Моя медкарта</p>
-              <p className="text-[12px] text-[#8E8E93] mt-0.5">
-                {diagnosisCount > 0
-                  ? `Диагнозы и анамнез · ${diagnosisCount}`
-                  : "Диагнозы и анамнез"}
-              </p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-[#C7C7CC] shrink-0" />
-          </GlassCard>
-        </Link>
-      </section>
-
       <p className="text-[11px] text-[#AEAEB2] text-center px-4 pb-2 leading-relaxed">
         {data.disclaimer}
       </p>
-    </div>
-  );
-}
-
-function WhenPills({
-  when,
-  setWhen,
-}: {
-  when: "morning" | "evening" | "other";
-  setWhen: (w: "morning" | "evening" | "other") => void;
-}) {
-  return (
-    <div className="flex gap-2 mb-3">
-      {(["morning", "evening", "other"] as const).map((w) => (
-        <button
-          key={w}
-          type="button"
-          onClick={() => setWhen(w)}
-          className={cn(
-            "flex-1 h-9 rounded-full text-[13px] font-medium pressable",
-            when === w ? "bg-[#007AFF] text-white" : "bg-black/5 text-[#1C1C1E]",
-          )}
-        >
-          {w === "morning" ? "Утро" : w === "evening" ? "Вечер" : "Другое"}
-        </button>
-      ))}
     </div>
   );
 }
